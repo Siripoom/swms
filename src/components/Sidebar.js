@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "@/config/supabase";
+import { logout } from "@/services/auth";
 import {
   BarChart3,
   Users,
@@ -13,7 +13,6 @@ import {
   Settings,
   FileText,
   LogOut,
-  ChevronDown,
   Menu,
   X,
 } from "lucide-react";
@@ -22,6 +21,7 @@ export default function Sidebar({ userRole }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // เมนูตาม Role
   const getMenuItems = () => {
@@ -94,9 +94,39 @@ export default function Sidebar({ userRole }) {
   const menuItems = getMenuItems();
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    localStorage.removeItem("userRole");
-    router.push("/login");
+    setIsLoggingOut(true);
+
+    try {
+      const result = await logout();
+
+      if (result.success) {
+        router.push("/login");
+      } else {
+        console.error("Logout error:", result.error);
+        // แม้จะ error ก็ redirect ไป login อยู่ดี
+        router.push("/login");
+      }
+    } catch (error) {
+      console.error("Unexpected logout error:", error);
+      router.push("/login");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  const getRoleDisplayName = () => {
+    switch (userRole) {
+      case "admin":
+        return "ผู้ดูแลระบบ";
+      case "department_head":
+        return "ผู้บริหารภาควิชา";
+      case "teacher":
+        return "อาจารย์";
+      case "student":
+        return "นักศึกษา";
+      default:
+        return "ผู้ใช้งาน";
+    }
   };
 
   return (
@@ -168,20 +198,25 @@ export default function Sidebar({ userRole }) {
         <div className="p-4 border-t border-blue-500">
           <div className="mb-4">
             <p className="text-blue-200 text-sm">เข้าสู่ระบบในฐานะ</p>
-            <p className="font-medium capitalize">
-              {userRole === "admin" && "ผู้ดูแลระบบ"}
-              {userRole === "department_head" && "ผู้บริหารภาควิชา"}
-              {userRole === "teacher" && "อาจารย์"}
-              {userRole === "student" && "นักศึกษา"}
-            </p>
+            <p className="font-medium">{getRoleDisplayName()}</p>
           </div>
 
           <button
             onClick={handleLogout}
-            className="flex items-center space-x-3 w-full px-4 py-3 text-blue-100 hover:bg-blue-500 hover:text-white rounded-lg transition-colors duration-200"
+            disabled={isLoggingOut}
+            className={`
+              flex items-center space-x-3 w-full px-4 py-3 rounded-lg transition-colors duration-200
+              ${
+                isLoggingOut
+                  ? "bg-blue-500 text-blue-200 cursor-not-allowed"
+                  : "text-blue-100 hover:bg-blue-500 hover:text-white"
+              }
+            `}
           >
             <LogOut size={20} />
-            <span className="font-medium">ออกจากระบบ</span>
+            <span className="font-medium">
+              {isLoggingOut ? "กำลังออกจากระบบ..." : "ออกจากระบบ"}
+            </span>
           </button>
         </div>
       </div>
