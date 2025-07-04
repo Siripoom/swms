@@ -1,103 +1,173 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import React, { useState } from "react";
+import {
+  Form,
+  Input,
+  Button,
+  Card,
+  Typography,
+  Space,
+  message,
+  Checkbox,
+} from "antd";
+import {
+  UserOutlined,
+  LockOutlined,
+  EyeInvisibleOutlined,
+  EyeTwoTone,
+} from "@ant-design/icons";
+
+const { Title, Text } = Typography;
+
+export default function LoginPage() {
+  const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
+
+  const onFinish = async (values) => {
+    setLoading(true);
+    try {
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      console.log("Login attempt:", values);
+      message.success("เข้าสู่ระบบสำเร็จ!");
+
+      // Here you would typically redirect to dashboard
+      // For demo purposes, we'll just show success message
+    } catch (error) {
+      message.error("เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onFinishFailed = (errorInfo) => {
+    console.log("Failed:", errorInfo);
+    message.error("กรุณากรอกข้อมูลให้ครบถ้วน");
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <Card
+          className="shadow-xl border-0 rounded-2xl overflow-hidden"
+          bodyStyle={{ padding: 0 }}
+        >
+          {/* Header Section */}
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-12 text-center text-white">
+            <div className="mb-4">
+              <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <UserOutlined className="text-3xl text-white" />
+              </div>
+              <Title level={2} className="text-white mb-2 !text-white">
+                ระบบจัดการภาระงานนักศึกษา
+              </Title>
+              <Text className="text-blue-100 text-sm">
+                Student Workload Management System
+              </Text>
+            </div>
+          </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          {/* Form Section */}
+          <div className="px-8 py-8">
+            <div className="text-center mb-6">
+              <Title level={3} className="text-gray-800 mb-2">
+                เข้าสู่ระบบ
+              </Title>
+              <Text className="text-gray-500">
+                กรุณากรอกชื่อผู้ใช้และรหัสผ่าน
+              </Text>
+            </div>
+
+            <Form
+              form={form}
+              name="login"
+              onFinish={onFinish}
+              onFinishFailed={onFinishFailed}
+              layout="vertical"
+              requiredMark={false}
+            >
+              <Form.Item
+                name="username"
+                rules={[
+                  { required: true, message: "กรุณากรอกชื่อผู้ใช้" },
+                  { min: 3, message: "ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร" },
+                ]}
+              >
+                <Input
+                  prefix={<UserOutlined className="text-gray-400" />}
+                  placeholder="ชื่อผู้ใช้"
+                  size="large"
+                  className="rounded-lg"
+                />
+              </Form.Item>
+
+              <Form.Item
+                name="password"
+                rules={[
+                  { required: true, message: "กรุณากรอกรหัสผ่าน" },
+                  { min: 6, message: "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร" },
+                ]}
+              >
+                <Input.Password
+                  prefix={<LockOutlined className="text-gray-400" />}
+                  placeholder="รหัสผ่าน"
+                  size="large"
+                  className="rounded-lg"
+                  iconRender={(visible) =>
+                    visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />
+                  }
+                />
+              </Form.Item>
+
+              <Form.Item>
+                <div className="flex items-center justify-between">
+                  <Form.Item name="remember" valuePropName="checked" noStyle>
+                    <Checkbox className="text-sm text-gray-600">
+                      จดจำการเข้าสู่ระบบ
+                    </Checkbox>
+                  </Form.Item>
+                  <Button type="link" className="p-0 text-sm">
+                    ลืมรหัสผ่าน?
+                  </Button>
+                </div>
+              </Form.Item>
+
+              <Form.Item>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  loading={loading}
+                  size="large"
+                  className="w-full rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 border-0 hover:from-blue-700 hover:to-indigo-700"
+                  style={{ height: "48px" }}
+                >
+                  {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
+                </Button>
+              </Form.Item>
+
+              <div className="text-center text-sm text-gray-500 mt-6">
+                <Text>
+                  ต้องการความช่วยเหลือ?{" "}
+                  <Button type="link" className="p-0 text-sm">
+                    ติดต่อผู้ดูแลระบบ
+                  </Button>
+                </Text>
+              </div>
+            </Form>
+          </div>
+        </Card>
+
+        {/* Footer */}
+        <div className="text-center mt-8 text-gray-500 text-sm">
+          <Text>
+            © 2025 ระบบจัดการภาระงานนักศึกษา วิทยาลัยพยาบาลบรมราชชนนี ชัยนาท
+          </Text>
+          <br />
+          <Text className="text-xs">พัฒนาโดย สิริภูมิ อาทรสิริรัตน์</Text>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
     </div>
   );
 }
