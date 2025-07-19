@@ -1,56 +1,64 @@
+// src/contexts/AuthContext.js
+
 "use client";
 
 import { createContext, useContext, useState, useEffect } from "react";
-import { supabase } from "@/config/supabase"; // **ตรวจสอบให้แน่ใจว่า path นี้ถูกต้อง**
+import { supabase } from "@/config/supabase";
 
+// สร้าง Context ที่จะเก็บข้อมูลผู้ใช้และสถานะการโหลด
 const AuthContext = createContext({
-  user: null,
-  role: null,
+  session: null,
+  userProfile: null,
   loading: true,
+  user: null, // เพื่อความสะดวกในการใช้งาน
+  role: null, // เพื่อความสะดวกในการใช้งาน
 });
 
+// สร้าง Provider ที่จะครอบ App ของคุณ
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [role, setRole] = useState(null);
+  const [session, setSession] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // ฟังก์ชันนี้จะดึง session และ profile user เมื่อโหลดเว็บครั้งแรก
-    const getInitialSession = async () => {
-      setLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
+    // ฟังก์ชันสำหรับดึง Profile จากตาราง users
+    const getUserProfile = async (user) => {
+      if (!user) return null;
 
-      if (session?.user) {
-        // ถ้ามี session, ให้ดึงข้อมูล profile (role) จากตาราง users
-        const { data: profile } = await supabase
+      try {
+        const { data, error } = await supabase
           .from('users')
-          .select('role')
-          .eq('id', session.user.id)
+          .select('*') // ดึงมาทั้งหมดเลย หรือเลือกฟิลด์ที่จำเป็น: 'role, full_name, username'
+          .eq('id', user.id)
           .single();
 
-        setUser(session.user);
-        setRole(profile?.role || null);
+        if (error) {
+          console.error("AuthContext: Error fetching user profile. Signing out.", error.message);
+          // ถ้าหา profile ไม่เจอ ควร sign out เพื่อป้องกัน state ที่ไม่สมบูรณ์
+          await supabase.auth.signOut();
+          return null;
+        }
+        return data;
+      } catch (e) {
+        console.error("AuthContext: Exception in getUserProfile.", e);
+        return null;
       }
-      setLoading(false);
     };
 
-    getInitialSession();
-
-    // ตั้งค่า listener เพื่อคอยตรวจจับการเปลี่ยนแปลงสถานะ (Login/Logout)
+    // onAuthStateChange จะทำงานเพียงครั้งเดียวตอนโหลดหน้าเว็บเพื่อดึง session เริ่มต้น
+    // และจะทำงานอีกครั้งเมื่อมีการ SIGN_IN หรือ SIGN_OUT
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        // เมื่อมีการ login/logout เกิดขึ้น, อัปเดต state ใหม่
-        if (session?.user) {
-          const { data: profile } = await supabase
-            .from('users')
-            .select('role')
-            .eq('id', session.user.id)
-            .single();
-          setUser(session.user);
-          setRole(profile?.role || null);
+        setLoading(true);
+        if (session && session.user) {
+          console.log("AuthContext: User signed in. Fetching profile...");
+          const profile = await getUserProfile(session.user);
+          setSession(session);
+          setUserProfile(profile);
         } else {
-          setUser(null);
-          setRole(null);
+          console.log("AuthContext: User signed out or no session found.");
+          setSession(null);
+          setUserProfile(null);
         }
         setLoading(false);
       }
@@ -62,10 +70,14 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
+  // ค่าที่จะส่งผ่าน Context
   const value = {
-    user,
-    role,
+    session,
+    userProfile,
     loading,
+    // ค่าลัดเพื่อความสะดวก
+    user: session?.user,
+    role: userProfile?.role,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -73,5 +85,9 @@ export const AuthProvider = ({ children }) => {
 
 // สร้าง custom hook เพื่อให้เรียกใช้ข้อมูลจาก Context ได้ง่ายๆ
 export const useAuth = () => {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 };

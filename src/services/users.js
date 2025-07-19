@@ -8,7 +8,7 @@ export async function getAllUsers() {
     const { data, error } = await supabase.functions.invoke("get-all-users");
 
     if (error) throw error;
-    if (data.error) throw new Error(data.error); // Handle errors from within the function
+    if (data.error) throw new Error(data.error);
 
     return { success: true, data };
   } catch (error) {
@@ -20,7 +20,6 @@ export async function getAllUsers() {
 // สร้างผู้ใช้ใหม่ผ่าน Edge Function
 export async function createUser(userData) {
   try {
-    // Client-side validation for duplicates can still be useful for instant feedback
     const { data: existingUser } = await supabase
       .from("users")
       .select("username, email")
@@ -32,7 +31,6 @@ export async function createUser(userData) {
       throw new Error(`${duplicateField} นี้มีอยู่ในระบบแล้ว`);
     }
 
-    // Call the Edge Function
     const { data, error } = await supabase.functions.invoke("create-user-profile", {
       body: userData,
     });
@@ -47,24 +45,26 @@ export async function createUser(userData) {
   }
 }
 
-// อัปเดตข้อมูลผู้ใช้ (ยังคงทำผ่าน Client API แต่ต้องมี RLS ที่ถูกต้อง)
+// === ส่วนที่แก้ไข ===
+// อัปเดตข้อมูลผู้ใช้ (ผ่าน Edge Function เพื่อแก้ไขได้ทั้ง Auth และ Profile)
 export async function updateUser(id, userData) {
   try {
-    // It's safer to only allow updating non-critical fields on the client
-    const { data, error } = await supabase
-      .from("users")
-      .update({
-        full_name: userData.full_name,
-        role: userData.role,
-        department: userData.department || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .select()
-      .single();
+    console.log(`[Client Service] Updating user ${id} with data:`, userData);
 
-    if (error) throw error;
+    // เรียกใช้ Edge Function พร้อมส่งทั้ง ID และข้อมูลที่จะอัปเดต
+    const { data, error } = await supabase.functions.invoke("update-user-profile", {
+      body: {
+        userId: id,
+        ...userData // ส่งข้อมูลทั้งหมดที่ได้จากฟอร์ม
+      },
+    });
+
+    if (error) throw new Error(`Network/Invoke Error: ${error.message}`);
+    if (data && data.error) throw new Error(data.error);
+
+    console.log("[Client Service] User updated successfully:", data);
     return { success: true, data };
+
   } catch (error) {
     console.error("Error updating user:", error);
     return { success: false, error: error.message };
@@ -73,7 +73,6 @@ export async function updateUser(id, userData) {
 
 // ลบผู้ใช้ผ่าน Edge Function
 export async function deleteUser(id) {
-  // 1. ตรวจสอบ Input ก่อนส่ง: ตรวจสอบว่า `id` ที่ได้รับมาไม่ใช่ค่าว่าง
   if (!id) {
     const errorMessage = "ไม่สามารถลบผู้ใช้ได้: ไม่พบ User ID";
     console.error(errorMessage);
@@ -83,36 +82,24 @@ export async function deleteUser(id) {
   console.log(`[Client Service] กำลังส่งคำขอลบผู้ใช้ ID: ${id}`);
 
   try {
-    // 2. เรียกใช้ Edge Function: ส่ง body ในรูปแบบที่ถูกต้อง
     const { data, error } = await supabase.functions.invoke("delete-user-profile", {
       body: { userId: id },
     });
 
-    // 3. จัดการ Error จากการเรียกใช้ Function (Network/Permission Error)
     if (error) {
       console.error("[Client Service] เกิดข้อผิดพลาดระหว่างเรียก Edge Function:", error);
-      // ข้อผิดพลาดที่พบบ่อย:
-      // - Network error: ไม่สามารถเชื่อมต่อกับ server ได้
-      // - 401 Unauthorized: ผู้ใช้ไม่ได้ login หรือ JWT token ไม่ถูกต้อง
-      // - 5xx Server error: Edge function อาจจะ deploy ไม่สำเร็จ
       throw new Error(`การเชื่อมต่อล้มเหลว: ${error.message}`);
     }
 
-    // 4. จัดการ Error ที่ถูกส่งกลับมาจากภายใน Logic ของ Edge Function
-    // Edge function ของเราจะส่งกลับ { error: '...' } หากมีปัญหา
     if (data && data.error) {
       console.error("[Client Service] Edge Function ตอบกลับพร้อมข้อผิดพลาด:", data.error);
-      // ตัวอย่างข้อผิดพลาด: "ไม่สามารถลบผู้ดูแลระบบคนสุดท้ายได้"
       throw new Error(data.error);
     }
 
-    // 5. กรณีสำเร็จ: Edge function ทำงานสำเร็จ
     console.log("[Client Service] Edge Function ตอบกลับว่าลบสำเร็จ:", data?.message || 'Success');
     return { success: true, data: data };
 
   } catch (error) {
-    // 6. Catch-all: ดักจับข้อผิดพลาดทั้งหมดที่เกิดขึ้นใน try block
-    // และจัดรูปแบบเพื่อส่งกลับไปให้ UI แสดงผล
     console.error("[Client Service] ข้อผิดพลาดสุดท้ายในการลบผู้ใช้:", error.message);
     return { success: false, error: error.message };
   }
