@@ -100,15 +100,15 @@ export default function Sidebar({ userRole }) {
       const result = await logout();
 
       if (result.success) {
-        router.push("/login");
+        router.push("/");
       } else {
         console.error("Logout error:", result.error);
         // แม้จะ error ก็ redirect ไป login อยู่ดี
-        router.push("/login");
+        router.push("/");
       }
     } catch (error) {
       console.error("Unexpected logout error:", error);
-      router.push("/login");
+      router.push("/");
     } finally {
       setIsLoggingOut(false);
     }
@@ -180,10 +180,9 @@ export default function Sidebar({ userRole }) {
                 onClick={() => setIsMobileOpen(false)}
                 className={`
                   flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200
-                  ${
-                    isActive
-                      ? "bg-blue-700 text-white"
-                      : "text-blue-100 hover:bg-blue-500 hover:text-white"
+                  ${isActive
+                    ? "bg-blue-700 text-white"
+                    : "text-blue-100 hover:bg-blue-500 hover:text-white"
                   }
                 `}
               >
@@ -206,10 +205,9 @@ export default function Sidebar({ userRole }) {
             disabled={isLoggingOut}
             className={`
               flex items-center space-x-3 w-full px-4 py-3 rounded-lg transition-colors duration-200
-              ${
-                isLoggingOut
-                  ? "bg-blue-500 text-blue-200 cursor-not-allowed"
-                  : "text-blue-100 hover:bg-blue-500 hover:text-white"
+              ${isLoggingOut
+                ? "bg-blue-500 text-blue-200 cursor-not-allowed"
+                : "text-blue-100 hover:bg-blue-500 hover:text-white"
               }
             `}
           >
