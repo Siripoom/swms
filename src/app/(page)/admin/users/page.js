@@ -150,10 +150,17 @@ export default function AdminUsersPage() {
   // ลบผู้ใช้
   const handleDelete = async (user) => {
     try {
+      // เรียก Service function ที่เราดีบักกัน
       const result = await deleteUser(user.id);
+
       if (result.success) {
         message.success("ลบผู้ใช้สำเร็จ");
+
+        // ***** จุดที่ต้องเพิ่ม *****
+        // หลังจากลบสำเร็จ ให้ดึงข้อมูลผู้ใช้ทั้งหมดมาใหม่
+        // เพื่อให้ตารางใน UI อัปเดตและแสดงข้อมูลที่ถูกต้อง
         fetchUsers();
+
       } else {
         message.error("เกิดข้อผิดพลาด: " + result.error);
       }
@@ -375,31 +382,31 @@ export default function AdminUsersPage() {
             modalMode === "create"
               ? "เพิ่มผู้ใช้ใหม่"
               : modalMode === "edit"
-              ? "แก้ไขข้อมูลผู้ใช้"
-              : "ข้อมูลผู้ใช้"
+                ? "แก้ไขข้อมูลผู้ใช้"
+                : "ข้อมูลผู้ใช้"
           }
           open={isModalOpen}
           onCancel={closeModal}
           footer={
             modalMode === "view"
               ? [
-                  <Button key="close" onClick={closeModal}>
-                    ปิด
-                  </Button>,
-                ]
+                <Button key="close" onClick={closeModal}>
+                  ปิด
+                </Button>,
+              ]
               : [
-                  <Button key="cancel" onClick={closeModal}>
-                    ยกเลิก
-                  </Button>,
-                  <Button
-                    key="submit"
-                    type="primary"
-                    loading={formLoading}
-                    onClick={() => form.submit()}
-                  >
-                    บันทึก
-                  </Button>,
-                ]
+                <Button key="cancel" onClick={closeModal}>
+                  ยกเลิก
+                </Button>,
+                <Button
+                  key="submit"
+                  type="primary"
+                  loading={formLoading}
+                  onClick={() => form.submit()}
+                >
+                  บันทึก
+                </Button>,
+              ]
           }
           width={600}
         >
