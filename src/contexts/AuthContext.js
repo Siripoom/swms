@@ -1,40 +1,38 @@
-// src/contexts/AuthContext.js
-
 "use client";
 
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
 import { supabase } from "@/config/supabase";
 
-// สร้าง Context ที่จะเก็บข้อมูลผู้ใช้และสถานะการโหลด
+// สร้าง Context
 const AuthContext = createContext({
   session: null,
   userProfile: null,
   loading: true,
-  user: null, // เพื่อความสะดวกในการใช้งาน
-  role: null, // เพื่อความสะดวกในการใช้งาน
+  user: null,
+  role: null,
 });
 
-// สร้าง Provider ที่จะครอบ App ของคุณ
+// สร้าง Provider
 export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // ใช้ ref เพื่อเก็บสถานะการโหลดครั้งแรก
+  const initialLoadComplete = useRef(false);
+
   useEffect(() => {
-    // ฟังก์ชันสำหรับดึง Profile จากตาราง users
+    // ฟังก์ชันดึง Profile (เหมือนเดิม)
     const getUserProfile = async (user) => {
       if (!user) return null;
-
       try {
         const { data, error } = await supabase
           .from('users')
-          .select('*') // ดึงมาทั้งหมดเลย หรือเลือกฟิลด์ที่จำเป็น: 'role, full_name, username'
+          .select('*')
           .eq('id', user.id)
           .single();
-
         if (error) {
           console.error("AuthContext: Error fetching user profile. Signing out.", error.message);
-          // ถ้าหา profile ไม่เจอ ควร sign out เพื่อป้องกัน state ที่ไม่สมบูรณ์
           await supabase.auth.signOut();
           return null;
         }
@@ -45,45 +43,57 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
-    // onAuthStateChange จะทำงานเพียงครั้งเดียวตอนโหลดหน้าเว็บเพื่อดึง session เริ่มต้น
-    // และจะทำงานอีกครั้งเมื่อมีการ SIGN_IN หรือ SIGN_OUT
+    // onAuthStateChange listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (event, currentSession) => {
+        // ตรวจสอบว่าสถานะผู้ใช้เปลี่ยนแปลงจริงหรือไม่ (Login, Logout)
+        const hasUserChanged = currentSession?.user?.id !== session?.user?.id;
+
+        // ถ้าสถานะไม่เปลี่ยนแปลง และไม่ใช่การโหลดครั้งแรก -> ไม่ต้องทำอะไรเลย
+        if (!hasUserChanged && initialLoadComplete.current) {
+          return;
+        }
+
+        // ถ้ามีการเปลี่ยนแปลง หรือเป็นการโหลดครั้งแรก -> แสดง Loading
         setLoading(true);
-        if (session && session.user) {
-          console.log("AuthContext: User signed in. Fetching profile...");
-          const profile = await getUserProfile(session.user);
-          setSession(session);
+
+        if (currentSession?.user) {
+          const profile = await getUserProfile(currentSession.user);
+          setSession(currentSession);
           setUserProfile(profile);
         } else {
-          console.log("AuthContext: User signed out or no session found.");
           setSession(null);
           setUserProfile(null);
         }
+
+        // ตั้งค่าว่าการโหลดครั้งแรกเสร็จสิ้นแล้ว
+        if (!initialLoadComplete.current) {
+          initialLoadComplete.current = true;
+        }
+
         setLoading(false);
       }
     );
 
-    // Cleanup subscription เมื่อ component unmount
+    // Cleanup
     return () => {
       subscription?.unsubscribe();
     };
-  }, []);
+  }, [session]); // เพิ่ม 'session' ใน dependency array
 
-  // ค่าที่จะส่งผ่าน Context
   const value = {
     session,
     userProfile,
     loading,
-    // ค่าลัดเพื่อความสะดวก
     user: session?.user,
     role: userProfile?.role,
   };
 
+  // *** บรรทัดที่แก้ไขแล้ว ***
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// สร้าง custom hook เพื่อให้เรียกใช้ข้อมูลจาก Context ได้ง่ายๆ
+// Custom Hook (เหมือนเดิม)
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
