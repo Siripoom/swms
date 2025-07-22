@@ -1,342 +1,497 @@
+// DashboardPage.js
 "use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
+import { getMyWorkloadReport, getStudentProfileByUserId } from "@/services/workloads";
+import { Card, Col, Row, Spin, Typography, message, Progress, Badge, Avatar } from "antd";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Area, AreaChart } from "recharts";
+import {
+  BookOutlined,
+  ExperimentOutlined,
+  TeamOutlined,
+  UserOutlined,
+  HeartOutlined,
+  TrophyOutlined,
+  ClockCircleOutlined,
+  CalendarOutlined
+} from "@ant-design/icons";
+
+const { Title, Text } = Typography;
+
+// Professional color palette - matching sidebar blue theme
+const COLORS = [
+  "#1890ff", // Academic - Primary Blue
+  "#722ed1", // Research - Purple
+  "#13c2c2", // Academic Service - Cyan
+  "#52c41a", // Student Affairs - Green
+  "#f5222d"  // Personal - Red
+];
+
+const GRADIENT_COLORS = [
+  "linear-gradient(135deg, #1890ff 0%, #096dd9 100%)",
+  "linear-gradient(135deg, #722ed1 0%, #531dab 100%)",
+  "linear-gradient(135deg, #13c2c2 0%, #08979c 100%)",
+  "linear-gradient(135deg, #52c41a 0%, #389e0d 100%)",
+  "linear-gradient(135deg, #f5222d 0%, #cf1322 100%)"
+];
+
+const categoryConfig = {
+  academic: {
+    name: "วิชาการ",
+    icon: <BookOutlined />,
+    color: COLORS[0],
+    gradient: GRADIENT_COLORS[0]
+  },
+  research: {
+    name: "วิจัย",
+    icon: <ExperimentOutlined />,
+    color: COLORS[1],
+    gradient: GRADIENT_COLORS[1]
+  },
+  academic_service: {
+    name: "บริการวิชาการ",
+    icon: <TeamOutlined />,
+    color: COLORS[2],
+    gradient: GRADIENT_COLORS[2]
+  },
+  student_affairs: {
+    name: "กิจการนักศึกษา",
+    icon: <UserOutlined />,
+    color: COLORS[3],
+    gradient: GRADIENT_COLORS[3]
+  },
+  personal: {
+    name: "ส่วนตัว",
+    icon: <HeartOutlined />,
+    color: COLORS[4],
+    gradient: GRADIENT_COLORS[4]
+  }
+};
 
 export default function StudentDashboardPage() {
-  return (
-    <DashboardLayout title="Dashboard นักศึกษา" requiredRole={["student"]}>
-      <div className="space-y-6">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow p-6 text-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-blue-100 text-sm">ภาระงานวิชาการ</p>
-                <p className="text-2xl font-bold">69 ชั่วโมง</p>
-              </div>
-              <div className="bg-blue-400 bg-opacity-30 p-3 rounded-lg">
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                  />
-                </svg>
-              </div>
-            </div>
-          </div>
+  const { user, role, loading: authLoading } = useAuth();
 
-          <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg shadow p-6 text-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-green-100 text-sm">วิจัย/นวัตกรรม</p>
-                <p className="text-2xl font-bold">6 ชั่วโมง</p>
-              </div>
-              <div className="bg-green-400 bg-opacity-30 p-3 rounded-lg">
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                  />
-                </svg>
-              </div>
-            </div>
-          </div>
+  const [studentId, setStudentId] = useState(null);
+  const [summary, setSummary] = useState({
+    academic: 0, research: 0, academic_service: 0, student_affairs: 0, personal: 0
+  });
+  const [loading, setLoading] = useState(true);
 
-          <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg shadow p-6 text-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-purple-100 text-sm">บริการวิชาการ</p>
-                <p className="text-2xl font-bold">10 ชั่วโมง</p>
-              </div>
-              <div className="bg-purple-400 bg-opacity-30 p-3 rounded-lg">
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                  />
-                </svg>
-              </div>
-            </div>
-          </div>
+  const calculateSummary = (data) => {
+    const temp = {
+      academic: 0, research: 0, academic_service: 0, student_affairs: 0, personal: 0
+    };
+    data.forEach(item => {
+      const category = item.category;
+      const hours = parseFloat(item.hours_spent || 0);
+      if (category in temp && !isNaN(hours)) {
+        temp[category] += hours;
+      }
+    });
+    setSummary(temp);
+  };
 
-          <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg shadow p-6 text-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-orange-100 text-sm">กิจการนักศึกษา</p>
-                <p className="text-2xl font-bold">0 ชั่วโมง</p>
-              </div>
-              <div className="bg-orange-400 bg-opacity-30 p-3 rounded-lg">
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                  />
-                </svg>
-              </div>
-            </div>
-          </div>
+  const fetchData = useCallback(async (sid) => {
+    setLoading(true);
+    const res = await getMyWorkloadReport({ student_id: sid });
+    if (res.success) {
+      calculateSummary(res.data);
+    } else {
+      message.error("ดึงข้อมูลไม่ได้: " + res.error);
+    }
+    setLoading(false);
+  }, []);
 
-          <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-lg shadow p-6 text-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-yellow-100 text-sm">ส่วนตัว/การใช้ชีวิต</p>
-                <p className="text-2xl font-bold">5.5 ชั่วโมง</p>
-              </div>
-              <div className="bg-yellow-400 bg-opacity-30 p-3 rounded-lg">
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-            </div>
+  useEffect(() => {
+    const init = async () => {
+      if (!authLoading && user && role === "student") {
+        const profileRes = await getStudentProfileByUserId(user.id);
+        if (profileRes.success && profileRes.data?.id) {
+          setStudentId(profileRes.data.id);
+          fetchData(profileRes.data.id);
+        } else {
+          message.error("ไม่พบข้อมูลนักศึกษา");
+          setLoading(false);
+        }
+      }
+    };
+    init();
+  }, [authLoading, user, role, fetchData]);
+
+  const totalHours = Object.values(summary).reduce((sum, hours) => sum + hours, 0);
+  const pieData = Object.entries(summary).map(([key, value]) => ({
+    name: categoryConfig[key]?.name || key,
+    value: value,
+    color: categoryConfig[key]?.color
+  })).filter(item => item.value > 0);
+
+  const barData = [
+    { name: "ภาระงานรวม", ...summary },
+  ];
+
+  // Custom tooltip for charts
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.95)',
+          padding: '12px',
+          border: 'none',
+          borderRadius: '12px',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <p style={{ margin: 0, fontWeight: 'bold' }}>{label}</p>
+          {payload.map((entry, index) => (
+            <p key={index} style={{
+              margin: '4px 0',
+              color: entry.color,
+              fontSize: '14px'
+            }}>
+              {getCategoryNameThai(entry.dataKey)}: {entry.value.toFixed(2)} ชั่วโมง
+            </p>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Custom tooltip for pie chart
+  const PieTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0];
+      return (
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.95)',
+          padding: '12px',
+          border: 'none',
+          borderRadius: '12px',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <p style={{
+            margin: 0,
+            fontWeight: 'bold',
+            color: data.payload.color,
+            fontSize: '14px'
+          }}>
+            {data.name}: {data.value.toFixed(2)} ชั่วโมง
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Helper function to get Thai category names
+  const getCategoryNameThai = (key) => {
+    return categoryConfig[key]?.name || key;
+  };
+
+  if (authLoading || loading) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        background: '#ffffff'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <Spin size="large" style={{ color: '#1890ff' }} />
+          <div style={{ color: '#1890ff', marginTop: 16, fontSize: '16px', fontWeight: '500' }}>
+            กำลังโหลดข้อมูล...
           </div>
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <DashboardLayout title="Dashboard">
+      <div style={{
+        padding: '32px',
+        background: '#ffffff',
+        minHeight: '100vh'
+      }}>
+        {/* Header Section */}
+        <div style={{
+          background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
+          borderRadius: '20px',
+          padding: '40px',
+          marginBottom: '32px',
+          color: 'white',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'url("data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%23ffffff" fill-opacity="0.1"%3E%3Cpath d="m36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat',
+            opacity: 0.1
+          }} />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <Row align="middle" justify="space-between">
+              <Col>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <Avatar size={64} style={{
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    backdropFilter: 'blur(10px)'
+                  }}>
+                    <UserOutlined style={{ fontSize: '28px' }} />
+                  </Avatar>
+                  <div>
+                    <Title level={2} style={{ color: 'white', margin: 0 }}>
+                      สรุปภาระงานของคุณ
+                    </Title>
+                    <Text style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '16px' }}>
+                      ภาพรวมการทำงานในแต่ละด้าน
+                    </Text>
+                  </div>
+                </div>
+              </Col>
+              <Col>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    padding: '16px 24px',
+                    borderRadius: '12px',
+                    backdropFilter: 'blur(10px)'
+                  }}>
+                    <ClockCircleOutlined style={{ fontSize: '20px', marginRight: '8px' }} />
+                    <Text style={{ color: 'white', fontSize: '24px', fontWeight: 'bold' }}>
+                      {totalHours.toFixed(1)}
+                    </Text>
+                    <div style={{ fontSize: '14px', opacity: 0.8 }}>ชั่วโมงรวม</div>
+                  </div>
+                </div>
+              </Col>
+            </Row>
+          </div>
+        </div>
+
+        {/* Summary Cards */}
+        <Row gutter={[24, 24]} style={{ marginBottom: '32px' }}>
+          {Object.entries(summary).map(([key, value], idx) => {
+            const config = categoryConfig[key];
+            const percentage = totalHours > 0 ? (value / totalHours) * 100 : 0;
+
+            return (
+              <Col xs={24} sm={12} lg={6} xl={4} key={key}>
+                <Card
+                  bordered={false}
+                  hoverable
+                  style={{
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    background: 'white',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    position: 'relative'
+                  }}
+                  bodyStyle={{
+                    padding: '24px',
+                    textAlign: 'center',
+                    position: 'relative',
+                    zIndex: 2
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-8px)';
+                    e.currentTarget.style.boxShadow = '0 20px 40px rgba(0, 0, 0, 0.15)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.08)';
+                  }}
+                >
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: '4px',
+                    background: config?.gradient || GRADIENT_COLORS[idx]
+                  }} />
+
+                  <div style={{
+                    background: config?.gradient || GRADIENT_COLORS[idx],
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 16px',
+                    fontSize: '24px',
+                    color: 'white'
+                  }}>
+                    {config?.icon}
+                  </div>
+
+                  <Title level={4} style={{ margin: '0 0 8px', fontSize: '16px' }}>
+                    {config?.name || key}
+                  </Title>
+
+                  <div style={{ marginBottom: '12px' }}>
+                    <Text style={{ fontSize: '28px', fontWeight: 'bold', color: config?.color }}>
+                      {value.toFixed(1)}
+                    </Text>
+                    <Text style={{ fontSize: '14px', color: '#8c8c8c', marginLeft: '4px' }}>
+                      ชั่วโมง
+                    </Text>
+                  </div>
+
+                  <Progress
+                    percent={percentage}
+                    showInfo={false}
+                    strokeColor={config?.gradient || GRADIENT_COLORS[idx]}
+                    trailColor="#f0f0f0"
+                    strokeWidth={6}
+                    style={{ marginBottom: '8px' }}
+                  />
+
+                  <Text style={{ fontSize: '12px', color: '#8c8c8c' }}>
+                    {percentage.toFixed(1)}% ของภาระงานรวม
+                  </Text>
+                </Card>
+              </Col>
+            );
+          })}
+        </Row>
 
         {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Row gutter={[32, 32]}>
           {/* Pie Chart */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              สัดส่วนภาระงานแต่ละด้าน
-            </h3>
-            <div className="h-64 flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-48 h-48 rounded-full bg-gradient-to-r from-blue-100 to-purple-100 flex items-center justify-center mx-auto mb-4">
-                  <span className="text-gray-500">Pie Chart</span>
+          <Col xs={24} lg={12}>
+            <Card
+              bordered={false}
+              style={{
+                borderRadius: '20px',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
+                overflow: 'hidden'
+              }}
+              bodyStyle={{ padding: '32px' }}
+            >
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                marginBottom: '24px',
+                gap: '12px'
+              }}>
+                <div style={{
+                  background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
+                  padding: '8px',
+                  borderRadius: '8px',
+                  color: 'white'
+                }}>
+                  <TrophyOutlined style={{ fontSize: '20px' }} />
                 </div>
-                <p className="text-sm text-gray-500">
-                  กราฟแสดงสัดส่วนการใช้เวลา
-                </p>
+                <Title level={3} style={{ margin: 0 }}>สัดส่วนภาระงาน</Title>
               </div>
-            </div>
-          </div>
+
+              <ResponsiveContainer width="100%" height={350}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={120}
+                    innerRadius={60}
+                    paddingAngle={4}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                    labelLine={false}
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={entry.color}
+                        stroke="white"
+                        strokeWidth={2}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<PieTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+            </Card>
+          </Col>
 
           {/* Bar Chart */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              ภาระงานรายภาค / รายปี
-            </h3>
-            <div className="h-64 flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-full h-32 bg-gradient-to-r from-green-100 to-blue-100 rounded-lg flex items-center justify-center mb-4">
-                  <span className="text-gray-500">Bar Chart</span>
+          <Col xs={24} lg={12}>
+            <Card
+              bordered={false}
+              style={{
+                borderRadius: '20px',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
+                overflow: 'hidden'
+              }}
+              bodyStyle={{ padding: '32px' }}
+            >
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                marginBottom: '24px',
+                gap: '12px'
+              }}>
+                <div style={{
+                  background: 'linear-gradient(135deg, #13c2c2 0%, #08979c 100%)',
+                  padding: '8px',
+                  borderRadius: '8px',
+                  color: 'white'
+                }}>
+                  <CalendarOutlined style={{ fontSize: '20px' }} />
                 </div>
-                <p className="text-sm text-gray-500">
-                  เปรียบเทียบภาระงานแต่ละภาค
-                </p>
+                <Title level={3} style={{ margin: 0 }}>ภาระงานแต่ละด้าน</Title>
               </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Recent Activities */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            กิจกรรมล่าสุด
-          </h3>
-          <div className="space-y-4">
-            <div className="flex items-center p-4 bg-blue-50 rounded-lg">
-              <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
-                <svg
-                  className="w-5 h-5 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={barData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <XAxis
+                    dataKey="name"
+                    tick={false}
+                    axisLine={false}
                   />
-                </svg>
-              </div>
-              <div className="ml-4 flex-1">
-                <p className="font-medium text-gray-900">
-                  ได้รับมอบหมายงาน: รายงานการศึกษาผู้ป่วย
-                </p>
-                <p className="text-sm text-gray-500">
-                  วิชา NS101 - การพยาบาลพื้นฐาน
-                </p>
-              </div>
-              <span className="text-sm text-gray-400">2 ชม. ที่แล้ว</span>
-            </div>
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#8c8c8c', fontSize: 12 }}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend
+                    formatter={(value) => getCategoryNameThai(value)}
+                  />
+                  {Object.keys(summary).map((cat, index) => (
+                    <Bar
+                      key={cat}
+                      dataKey={cat}
+                      name={getCategoryNameThai(cat)}
+                      fill={`url(#gradient${index})`}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={60}
+                    />
+                  ))}
+                  <defs>
+                    {Object.keys(summary).map((cat, index) => (
+                      <linearGradient key={cat} id={`gradient${index}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={COLORS[index]} stopOpacity={1} />
+                        <stop offset="100%" stopColor={COLORS[index]} stopOpacity={0.6} />
+                      </linearGradient>
+                    ))}
+                  </defs>
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+          </Col>
+        </Row>
 
-            <div className="flex items-center p-4 bg-green-50 rounded-lg">
-              <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                <svg
-                  className="w-5 h-5 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </div>
-              <div className="ml-4 flex-1">
-                <p className="font-medium text-gray-900">
-                  ส่งงานเรียบร้อย: แบบฝึกหัดที่ 5
-                </p>
-                <p className="text-sm text-gray-500">
-                  วิชา NS202 - แนวคิดพื้นฐานการพยาบาล
-                </p>
-              </div>
-              <span className="text-sm text-gray-400">1 วัน ที่แล้ว</span>
-            </div>
 
-            <div className="flex items-center p-4 bg-yellow-50 rounded-lg">
-              <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center">
-                <svg
-                  className="w-5 h-5 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-              <div className="ml-4 flex-1">
-                <p className="font-medium text-gray-900">
-                  เตือน: งานใกล้ครบกำหนด
-                </p>
-                <p className="text-sm text-gray-500">
-                  วิชา NS301 - การพยาบาลผู้ใหญ่ 1
-                </p>
-              </div>
-              <span className="text-sm text-red-500">ครบกำหนดใน 2 วัน</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            การดำเนินการด่วน
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <button className="p-4 text-center border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <div className="text-blue-600 mb-2">
-                <svg
-                  className="w-8 h-8 mx-auto"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                  />
-                </svg>
-              </div>
-              <span className="text-sm font-medium">ภาระงานวิชาการ</span>
-            </button>
-
-            <button className="p-4 text-center border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <div className="text-green-600 mb-2">
-                <svg
-                  className="w-8 h-8 mx-auto"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                  />
-                </svg>
-              </div>
-              <span className="text-sm font-medium">ภาระงานอื่นๆ</span>
-            </button>
-
-            <button className="p-4 text-center border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <div className="text-purple-600 mb-2">
-                <svg
-                  className="w-8 h-8 mx-auto"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                  />
-                </svg>
-              </div>
-              <span className="text-sm font-medium">รายงานของฉัน</span>
-            </button>
-
-            <button className="p-4 text-center border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <div className="text-orange-600 mb-2">
-                <svg
-                  className="w-8 h-8 mx-auto"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-              <span className="text-sm font-medium">ความช่วยเหลือ</span>
-            </button>
-          </div>
-        </div>
       </div>
     </DashboardLayout>
   );

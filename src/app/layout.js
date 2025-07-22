@@ -19,11 +19,9 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="th"> {/* เปลี่ยนเป็น "th" เพื่อให้เหมาะสมกับเนื้อหา */}
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <AuthProvider> {/* <--- 2. นำ AuthProvider มาห่อ children */}
+    <html lang="th">
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <AuthProvider>
           {children}
         </AuthProvider>
       </body>
