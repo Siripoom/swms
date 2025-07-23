@@ -133,16 +133,32 @@ export default function TeacherAssignmentsPage() {
     { title: 'ประเภท', dataIndex: 'type', key: 'type', render: (type) => type === 'individual' ? 'เดี่ยว' : 'กลุ่ม' },
     { title: 'วันที่มอบหมาย', dataIndex: 'assigned_date', key: 'assigned_date', render: (date) => dayjs(date).format('DD/MM/YYYY') },
     { title: 'กำหนดส่ง', dataIndex: 'due_date', key: 'due_date', render: (date) => dayjs(date).format('DD/MM/YYYY') },
-    { title: 'สถานะ', key: 'status', render: (_, record) => getStatusTag(record.due_date) },
+
     {
-      title: 'การดำเนินการ', key: 'actions', render: (_, record) => (
+      title: 'ชั่วโมง',
+      dataIndex: 'estimated_hours',
+      key: 'estimated_hours',
+      render: (value) => `${value} ชม.`
+    },
+
+    { title: 'สถานะ', key: 'status', render: (_, record) => getStatusTag(record.due_date) },
+
+    {
+      title: 'การดำเนินการ',
+      key: 'actions',
+      render: (_, record) => (
         <Space>
-          <Tooltip title="แก้ไข"><Button icon={<EditOutlined />} onClick={() => openModal('edit', record)} /></Tooltip>
-          <Popconfirm title="ลบภาระงานนี้?" onConfirm={() => handleDelete(record.id)}><Button danger icon={<DeleteOutlined />} /></Popconfirm>
+          <Tooltip title="แก้ไข">
+            <Button icon={<EditOutlined />} onClick={() => openModal('edit', record)} />
+          </Tooltip>
+          <Popconfirm title="ลบภาระงานนี้?" onConfirm={() => handleDelete(record.id)}>
+            <Button danger icon={<DeleteOutlined />} />
+          </Popconfirm>
         </Space>
       )
     },
   ];
+
 
   if (authLoading) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spin size="large" /></div>;

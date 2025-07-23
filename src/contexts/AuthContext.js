@@ -1,9 +1,8 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useRef } from "react";
-import { supabase } from "@/config/supabase";
+import { supabase } from "@/config/supabase"; // ตรวจสอบ path ของ supabase client ให้ถูกต้อง
 
-// สร้าง Context
 const AuthContext = createContext({
   session: null,
   userProfile: null,
@@ -12,49 +11,72 @@ const AuthContext = createContext({
   role: null,
 });
 
-// สร้าง Provider
 export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // ใช้ ref เพื่อเก็บสถานะการโหลดครั้งแรก
   const initialLoadComplete = useRef(false);
 
   useEffect(() => {
-    // ฟังก์ชันดึง Profile (เหมือนเดิม)
+    // ฟังก์ชันดึงโปรไฟล์ที่สมบูรณ์
     const getUserProfile = async (user) => {
       if (!user) return null;
       try {
-        const { data, error } = await supabase
+        // 1. ดึงข้อมูลพื้นฐานจากตาราง 'users'
+        const { data: baseProfile, error: userError } = await supabase
           .from('users')
           .select('*')
           .eq('id', user.id)
           .single();
-        if (error) {
-          console.error("AuthContext: Error fetching user profile. Signing out.", error.message);
-          await supabase.auth.signOut();
-          return null;
+
+        if (userError) {
+          console.error("AuthContext: Error fetching user profile:", userError.message);
+          throw userError;
         }
-        return data;
+
+        if (!baseProfile) return null;
+
+        // 2. ถ้าเป็นนักเรียน (student) ให้ดึงข้อมูลจากตาราง students เพิ่ม
+        if (baseProfile.role === 'student') {
+          const { data: studentData, error: studentError } = await supabase
+            .from('students')
+            .select('id, student_id') // ดึงทั้ง id (PK) และ student_id (รหัสประจำตัว)
+            .eq('user_id', user.id) // เชื่อมด้วย user_id
+            .single();
+
+          if (studentError) {
+            console.error("AuthContext: Could not find student details for user:", user.id, studentError.message);
+            // ถ้าหาโปรไฟล์นักเรียนไม่เจอ ก็ยังคืนโปรไฟล์พื้นฐานไปก่อน
+            return baseProfile;
+          }
+
+          // 3. รวมข้อมูลโปรไฟล์ โดยตั้งชื่อ property ใหม่ให้ชัดเจน
+          return {
+            ...baseProfile,
+            student_profile_id: studentData?.id,   // นี่คือ students.id (PK) ที่ service ต้องการ
+            student_id: studentData?.student_id    // นี่คือรหัสประจำตัวนักศึกษาสำหรับแสดงผล
+          };
+        }
+
+        // 4. ถ้าไม่ใช่ student ก็คืนค่าโปรไฟล์พื้นฐานไปเลย
+        return baseProfile;
+
       } catch (e) {
-        console.error("AuthContext: Exception in getUserProfile.", e);
+        console.error("AuthContext: Exception in getUserProfile. Signing out...", e);
+        // ในกรณีเกิด Error ร้ายแรง ให้ signOut เพื่อป้องกันปัญหา
+        await supabase.auth.signOut();
         return null;
       }
     };
 
-    // onAuthStateChange listener
+    // Listener สำหรับการเปลี่ยนแปลงสถานะการล็อกอิน
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
-        // ตรวจสอบว่าสถานะผู้ใช้เปลี่ยนแปลงจริงหรือไม่ (Login, Logout)
         const hasUserChanged = currentSession?.user?.id !== session?.user?.id;
-
-        // ถ้าสถานะไม่เปลี่ยนแปลง และไม่ใช่การโหลดครั้งแรก -> ไม่ต้องทำอะไรเลย
         if (!hasUserChanged && initialLoadComplete.current) {
           return;
         }
 
-        // ถ้ามีการเปลี่ยนแปลง หรือเป็นการโหลดครั้งแรก -> แสดง Loading
         setLoading(true);
 
         if (currentSession?.user) {
@@ -66,7 +88,6 @@ export const AuthProvider = ({ children }) => {
           setUserProfile(null);
         }
 
-        // ตั้งค่าว่าการโหลดครั้งแรกเสร็จสิ้นแล้ว
         if (!initialLoadComplete.current) {
           initialLoadComplete.current = true;
         }
@@ -75,11 +96,10 @@ export const AuthProvider = ({ children }) => {
       }
     );
 
-    // Cleanup
     return () => {
       subscription?.unsubscribe();
     };
-  }, [session]); // เพิ่ม 'session' ใน dependency array
+  }, [session]);
 
   const value = {
     session,
@@ -89,11 +109,10 @@ export const AuthProvider = ({ children }) => {
     role: userProfile?.role,
   };
 
-  // *** บรรทัดที่แก้ไขแล้ว ***
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Custom Hook (เหมือนเดิม)
+// Custom Hook สำหรับเรียกใช้ Context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {

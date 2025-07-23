@@ -2,10 +2,19 @@
 
 import { useState, useEffect } from "react";
 import { Bell, Search, User, ChevronDown } from "lucide-react";
-
+import { logout } from "@/services/auth";
 export default function Header({ title, userRole }) {
   const [currentTime, setCurrentTime] = useState("");
   const [showUserMenu, setShowUserMenu] = useState(false);
+
+  const handleLogout = async () => {
+    const result = await logout();
+    if (result.success) {
+      router.push("/"); // เปลี่ยนเป็น "/login" หรือหน้าแรกตามที่คุณต้องการ
+    } else {
+      alert("เกิดข้อผิดพลาดในการออกจากระบบ: " + result.error);
+    }
+  };
 
   useEffect(() => {
     const updateTime = () => {
@@ -107,12 +116,12 @@ export default function Header({ title, userRole }) {
                   ตั้งค่า
                 </a> */}
                 <hr className="my-1" />
-                <a
-                  href="#"
-                  className="block px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                <button
+                  onClick={handleLogout}
+                  className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
                 >
                   ออกจากระบบ
-                </a>
+                </button>
               </div>
             )}
           </div>

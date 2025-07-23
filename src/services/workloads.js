@@ -42,9 +42,20 @@ export async function getOtherWorkloadsByStudent(studentId) {
 
 // 2. สร้าง "ภาระงานอื่นๆ" ใหม่
 export async function createOtherWorkload(workloadData) {
-  // workloadData ควรจะมี student_id, category, activity_name, work_date, hours_spent
-  const { data, error } = await supabase.from('student_workloads').insert([workloadData]).select().single();
-  if (error) return { success: false, error: error.message };
+  console.log("📤 [createOtherWorkload] sending data:", workloadData);
+
+  const { data, error } = await supabase
+    .from('student_workloads')
+    .insert([workloadData])
+    .select()
+    .single();
+
+  if (error) {
+    console.error("❌ Supabase insert error:", error);
+    return { success: false, error: error.message };
+  }
+
+  console.log("✅ Inserted workload:", data);
   return { success: true, data };
 }
 

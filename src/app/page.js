@@ -143,8 +143,9 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <Card
           className="shadow-xl border-0 rounded-2xl overflow-hidden"
-          bodyStyle={{ padding: 0 }}
+          styles={{ body: { padding: 0 } }} // ✅ ใช้ styles.body แทน
         >
+
           {/* Header Section */}
           <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-12 text-center text-white">
             <div className="mb-4">
