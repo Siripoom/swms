@@ -28,6 +28,20 @@ export async function getAllStudents() {
   }
 }
 
+export async function getInstructors() {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, full_name, role')
+    .in('role', ['teacher', 'department_head']) // **เงื่อนไขใหม่: เลือกทั้งสอง role**
+    .order('full_name');
+
+  if (error) {
+    console.error("Error fetching instructors:", error);
+    return { success: false, error: error.message };
+  }
+  return { success: true, data };
+}
+
 // 2. ดึงรายชื่ออาจารย์สำหรับ Dropdown
 export async function getTeachers() {
   const { data, error } = await supabase

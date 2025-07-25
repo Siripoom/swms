@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useRef } from "react";
-import { supabase } from "@/config/supabase"; // ตรวจสอบ path ของ supabase client ให้ถูกต้อง
+import { supabase } from "@/config/supabase";
 
 const AuthContext = createContext({
   session: null,
@@ -9,6 +9,7 @@ const AuthContext = createContext({
   loading: true,
   user: null,
   role: null,
+  studentId: null, // เพิ่ม key นี้เพื่อให้ Component อื่นรู้ว่ามีค่านี้อยู่
 });
 
 export const AuthProvider = ({ children }) => {
@@ -22,7 +23,6 @@ export const AuthProvider = ({ children }) => {
     const getUserProfile = async (user) => {
       if (!user) return null;
       try {
-        // 1. ดึงข้อมูลพื้นฐานจากตาราง 'users'
         const { data: baseProfile, error: userError } = await supabase
           .from('users')
           .select('*')
@@ -36,40 +36,34 @@ export const AuthProvider = ({ children }) => {
 
         if (!baseProfile) return null;
 
-        // 2. ถ้าเป็นนักเรียน (student) ให้ดึงข้อมูลจากตาราง students เพิ่ม
         if (baseProfile.role === 'student') {
           const { data: studentData, error: studentError } = await supabase
             .from('students')
-            .select('id, student_id') // ดึงทั้ง id (PK) และ student_id (รหัสประจำตัว)
-            .eq('user_id', user.id) // เชื่อมด้วย user_id
+            .select('id, student_id')
+            .eq('user_id', user.id)
             .single();
 
           if (studentError) {
-            console.error("AuthContext: Could not find student details for user:", user.id, studentError.message);
-            // ถ้าหาโปรไฟล์นักเรียนไม่เจอ ก็ยังคืนโปรไฟล์พื้นฐานไปก่อน
+            console.warn("AuthContext: Could not find student details for user:", user.id, studentError.message);
             return baseProfile;
           }
 
-          // 3. รวมข้อมูลโปรไฟล์ โดยตั้งชื่อ property ใหม่ให้ชัดเจน
           return {
             ...baseProfile,
-            student_profile_id: studentData?.id,   // นี่คือ students.id (PK) ที่ service ต้องการ
-            student_id: studentData?.student_id    // นี่คือรหัสประจำตัวนักศึกษาสำหรับแสดงผล
+            student_profile_id: studentData?.id,
+            student_identifier: studentData?.student_id
           };
         }
 
-        // 4. ถ้าไม่ใช่ student ก็คืนค่าโปรไฟล์พื้นฐานไปเลย
         return baseProfile;
 
       } catch (e) {
         console.error("AuthContext: Exception in getUserProfile. Signing out...", e);
-        // ในกรณีเกิด Error ร้ายแรง ให้ signOut เพื่อป้องกันปัญหา
         await supabase.auth.signOut();
         return null;
       }
     };
 
-    // Listener สำหรับการเปลี่ยนแปลงสถานะการล็อกอิน
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
         const hasUserChanged = currentSession?.user?.id !== session?.user?.id;
@@ -107,12 +101,14 @@ export const AuthProvider = ({ children }) => {
     loading,
     user: session?.user,
     role: userProfile?.role,
+    // --- จุดที่แก้ไข ---
+    // เพิ่มบรรทัดนี้เพื่อส่ง student's Primary Key (uuid) ออกไป
+    studentId: userProfile?.student_profile_id || null,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Custom Hook สำหรับเรียกใช้ Context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {

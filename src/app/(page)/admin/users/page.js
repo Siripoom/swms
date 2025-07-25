@@ -11,267 +11,119 @@ import {
   getDepartments,
 } from "@/services/users";
 import {
-  Table,
-  Button,
-  Modal,
-  Form,
-  Input,
-  Select,
-  Space,
-  Card,
-  Typography,
-  Row,
-  Col,
-  Tag,
-  Avatar,
-  Popconfirm,
-  message,
-  Spin,
-  Tooltip,
+  Table, Button, Modal, Form, Input, Select, Space, Typography, Row, Col, Tag, Avatar, Popconfirm, message, Spin, Tooltip, Grid, Empty
 } from "antd";
 import {
-  UserOutlined,
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  EyeOutlined,
-  SearchOutlined,
-  MailOutlined,
-  LockOutlined,
-  TeamOutlined,
-  BankOutlined,
+  UserOutlined, PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, SearchOutlined, MailOutlined, LockOutlined, TeamOutlined
 } from "@ant-design/icons";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
+const { useBreakpoint } = Grid; // Import Hook สำหรับเช็คขนาดจอ
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedRole, setSelectedRole] = useState("");
+  const [selectedRoleFilter, setSelectedRoleFilter] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState("create"); // create, edit, view
+  const [modalMode, setModalMode] = useState("create");
   const [selectedUser, setSelectedUser] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
   const [form] = Form.useForm();
+  const screens = useBreakpoint(); // Hook สำหรับเช็คขนาดจอ
 
+  // --- Data & Services (ส่วน Logic เดิม ไม่มีการเปลี่ยนแปลง) ---
   const roles = getUserRoles();
   const departments = getDepartments();
 
-  // ดึงข้อมูลผู้ใช้
   const fetchUsers = async () => {
     setLoading(true);
     try {
       const result = await getAllUsers();
-      if (result.success) {
-        setUsers(result.data);
-      } else {
-        message.error("เกิดข้อผิดพลาดในการดึงข้อมูล: " + result.error);
-      }
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      message.error("เกิดข้อผิดพลาดในการดึงข้อมูล");
-    } finally {
-      setLoading(false);
-    }
+      if (result.success) { setUsers(result.data); } else { message.error("ดึงข้อมูลผู้ใช้ไม่สำเร็จ: " + result.error); }
+    } catch (error) { message.error("เกิดข้อผิดพลาดในการเชื่อมต่อ"); }
+    finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
+  useEffect(() => { fetchUsers(); }, []);
 
-  // กรองข้อมูลผู้ใช้
   const filteredUsers = users.filter((user) => {
+    const searchLower = searchTerm.toLowerCase();
     const matchesSearch =
-      user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = selectedRole === "" || user.role === selectedRole;
+      user.full_name?.toLowerCase().includes(searchLower) ||
+      user.username?.toLowerCase().includes(searchLower) ||
+      user.email?.toLowerCase().includes(searchLower);
+    const matchesRole = selectedRoleFilter === "" || user.role === selectedRoleFilter;
     return matchesSearch && matchesRole;
   });
 
-  // เปิด Modal
   const openModal = (mode, user = null) => {
     setModalMode(mode);
     setSelectedUser(user);
-
     if (user) {
-      form.setFieldsValue({
-        username: user.username || "",
-        full_name: user.full_name || "",
-        email: user.email || "",
-        role: user.role || "",
-        department: user.department || "",
-      });
+      form.setFieldsValue({ ...user });
     } else {
       form.resetFields();
     }
-
     setIsModalOpen(true);
   };
 
-  // ปิด Modal
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setSelectedUser(null);
-    form.resetFields();
-  };
+  const closeModal = () => { setIsModalOpen(false); setSelectedUser(null); form.resetFields(); };
 
-  // จัดการการส่งฟอร์ม
   const handleSubmit = async (values) => {
     setFormLoading(true);
-
     try {
-      let result;
-      if (modalMode === "create") {
-        result = await createUser(values);
-      } else if (modalMode === "edit") {
-        result = await updateUser(selectedUser.id, values);
-      }
-
+      const result = modalMode === "create" ? await createUser(values) : await updateUser(selectedUser.id, values);
       if (result.success) {
-        message.success(
-          modalMode === "create" ? "เพิ่มผู้ใช้สำเร็จ" : "แก้ไขข้อมูลสำเร็จ"
-        );
-        fetchUsers();
+        message.success(modalMode === "create" ? "เพิ่มผู้ใช้สำเร็จ" : "แก้ไขข้อมูลสำเร็จ");
+        await fetchUsers();
         closeModal();
-      } else {
-        message.error("เกิดข้อผิดพลาด: " + result.error);
-      }
-    } catch (error) {
-      console.error("Error submitting form:", error);
-      message.error("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
-    } finally {
-      setFormLoading(false);
-    }
+      } else { message.error("เกิดข้อผิดพลาด: " + result.error); }
+    } catch (error) { message.error("เกิดข้อผิดพลาดในการบันทึกข้อมูล"); }
+    finally { setFormLoading(false); }
   };
 
-  // ลบผู้ใช้
   const handleDelete = async (user) => {
     try {
-      // เรียก Service function ที่เราดีบักกัน
       const result = await deleteUser(user.id);
-
       if (result.success) {
-        message.success("ลบผู้ใช้สำเร็จ");
-
-        // ***** จุดที่ต้องเพิ่ม *****
-        // หลังจากลบสำเร็จ ให้ดึงข้อมูลผู้ใช้ทั้งหมดมาใหม่
-        // เพื่อให้ตารางใน UI อัปเดตและแสดงข้อมูลที่ถูกต้อง
-        fetchUsers();
-
-      } else {
-        message.error("เกิดข้อผิดพลาด: " + result.error);
-      }
-    } catch (error) {
-      console.error("Error deleting user:", error);
-      message.error("เกิดข้อผิดพลาดในการลบผู้ใช้");
-    }
+        message.success("ลบผู้ใช้สำเร็จ"); await fetchUsers();
+      } else { message.error("เกิดข้อผิดพลาด: " + result.error); }
+    } catch (error) { message.error("เกิดข้อผิดพลาดในการลบผู้ใช้"); }
   };
 
-  // แสดงชื่อ role เป็นภาษาไทย
-  const getRoleLabel = (role) => {
-    const roleObj = roles.find((r) => r.value === role);
-    return roleObj ? roleObj.label : role;
-  };
+  const getRoleLabel = (role) => roles.find((r) => r.value === role)?.label || role;
+  const getDepartmentLabel = (department) => departments.find((d) => d.value === department)?.label || department;
+  const getRoleColor = (role) => ({ admin: "red", department_head: "purple", teacher: "blue", student: "green" }[role] || "default");
 
-  // แสดงชื่อแผนก เป็นภาษาไทย
-  const getDepartmentLabel = (department) => {
-    const deptObj = departments.find((d) => d.value === department);
-    return deptObj ? deptObj.label : department;
-  };
-
-  // สีของ Tag สำหรับแต่ละ role
-  const getRoleColor = (role) => {
-    switch (role) {
-      case "admin":
-        return "red";
-      case "department_head":
-        return "purple";
-      case "teacher":
-        return "blue";
-      case "student":
-        return "green";
-      default:
-        return "default";
-    }
-  };
-
-  // คอลัมน์ของตาราง
+  // --- 1. ปรับปรุง Columns ของตารางให้มี `responsive` prop ---
   const columns = [
     {
       title: "ผู้ใช้",
-      dataIndex: "user_info",
       key: "user_info",
       render: (_, record) => (
         <Space>
-          <Avatar icon={<UserOutlined />} />
+          <Avatar icon={<UserOutlined />} src={record.avatar_url} />
           <div>
-            <div style={{ fontWeight: 500 }}>{record.full_name}</div>
-            <Text type="secondary" style={{ fontSize: "12px" }}>
-              {record.username} • {record.email}
-            </Text>
+            <Text strong>{record.full_name}</Text>
+            <Text type="secondary" className="block text-xs">{record.username}</Text>
           </div>
         </Space>
       ),
     },
+    { title: "อีเมล", dataIndex: "email", key: "email", responsive: ['lg'] },
+    { title: "บทบาท", dataIndex: "role", key: "role", responsive: ['sm'], render: (role) => <Tag color={getRoleColor(role)}>{getRoleLabel(role)}</Tag> },
+    { title: "แผนก", dataIndex: "department", key: "department", responsive: ['md'], render: (dept) => dept ? getDepartmentLabel(dept) : "-" },
     {
-      title: "บทบาท",
-      dataIndex: "role",
-      key: "role",
-      render: (role) => (
-        <Tag color={getRoleColor(role)}>{getRoleLabel(role)}</Tag>
-      ),
-      filters: roles.map((role) => ({
-        text: role.label,
-        value: role.value,
-      })),
-      onFilter: (value, record) => record.role === value,
-    },
-    {
-      title: "แผนก",
-      dataIndex: "department",
-      key: "department",
-      render: (department) =>
-        department ? getDepartmentLabel(department) : "-",
-    },
-    {
-      title: "สร้างเมื่อ",
-      dataIndex: "created_at",
-      key: "created_at",
-      render: (date) => new Date(date).toLocaleDateString("th-TH"),
-      sorter: (a, b) => new Date(a.created_at) - new Date(b.created_at),
-    },
-    {
-      title: "การดำเนินการ",
-      key: "actions",
-      width: 150,
+      title: "การดำเนินการ", key: "actions", align: 'center', width: 120,
       render: (_, record) => (
         <Space>
-          <Tooltip title="ดูข้อมูล">
-            <Button
-              type="text"
-              icon={<EyeOutlined />}
-              onClick={() => openModal("view", record)}
-            />
-          </Tooltip>
-          <Tooltip title="แก้ไข">
-            <Button
-              type="text"
-              icon={<EditOutlined />}
-              onClick={() => openModal("edit", record)}
-            />
-          </Tooltip>
+          <Tooltip title="ดูข้อมูล"><Button shape="circle" icon={<EyeOutlined />} onClick={() => openModal("view", record)} /></Tooltip>
+          <Tooltip title="แก้ไข"><Button shape="circle" icon={<EditOutlined />} onClick={() => openModal("edit", record)} /></Tooltip>
           <Tooltip title="ลบ">
-            <Popconfirm
-              title="ลบผู้ใช้"
-              description={`คุณแน่ใจหรือไม่ที่จะลบผู้ใช้ "${record.full_name}" (${record.username})?`}
-              onConfirm={() => handleDelete(record)}
-              okText="ใช่"
-              cancelText="ไม่"
-            >
-              <Button type="text" danger icon={<DeleteOutlined />} />
+            <Popconfirm title={`แน่ใจหรือไม่ที่จะลบ ${record.full_name}?`} onConfirm={() => handleDelete(record)} okText="ยืนยัน" cancelText="ยกเลิก">
+              <Button danger shape="circle" icon={<DeleteOutlined />} />
             </Popconfirm>
           </Tooltip>
         </Space>
@@ -281,213 +133,66 @@ export default function AdminUsersPage() {
 
   return (
     <DashboardLayout title="จัดการผู้ใช้" requiredRole={["admin"]}>
-      <div style={{ padding: "24px" }}>
-        {/* Header Section */}
-        <Card style={{ marginBottom: "24px" }}>
-          <Row justify="space-between" align="middle">
-            <Col>
-              <Space>
-                <TeamOutlined style={{ fontSize: "24px", color: "#1890ff" }} />
-                <div>
-                  <Title level={2} style={{ margin: 0 }}>
-                    จัดการผู้ใช้
-                  </Title>
-                  <Text type="secondary">
-                    เพิ่ม แก้ไข และจัดการผู้ใช้ในระบบ
-                  </Text>
-                </div>
-              </Space>
-            </Col>
-            <Col>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => openModal("create")}
-                size="large"
-              >
-                เพิ่มผู้ใช้ใหม่
-              </Button>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* Filters */}
-        <Card style={{ marginBottom: "24px" }}>
-          <Row gutter={16}>
-            <Col xs={24} md={12}>
-              <Input
-                placeholder="ค้นหาชื่อ, username หรือ email..."
-                prefix={<SearchOutlined />}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                allowClear
-              />
-            </Col>
-            <Col xs={24} md={12}>
-              <Select
-                placeholder="เลือกบทบาท"
-                value={selectedRole}
-                onChange={setSelectedRole}
-                allowClear
-                style={{ width: "100%" }}
-              >
-                {roles.map((role) => (
-                  <Option key={role.value} value={role.value}>
-                    {role.label}
-                  </Option>
-                ))}
-              </Select>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* Users Table */}
-        <Card>
-          <div style={{ marginBottom: "16px" }}>
-            <Title level={4} style={{ margin: 0 }}>
-              รายการผู้ใช้ ({filteredUsers.length} คน)
-            </Title>
+      {/* --- 2. ปรับ Layout หลัก และ Header --- */}
+      <div className="bg-white min-h-screen p-4 sm:p-6 lg:p-8">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div className="flex flex-wrap justify-between items-center gap-4">
+            <div>
+              <Title level={2} className="!mb-1 flex items-center gap-3"><TeamOutlined />จัดการผู้ใช้</Title>
+              <Text type="secondary">เพิ่ม แก้ไข และจัดการผู้ใช้ทั้งหมดในระบบ</Text>
+            </div>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal("create")} size="large">
+              {screens.sm ? 'เพิ่มผู้ใช้ใหม่' : ''}
+            </Button>
           </div>
 
-          <Table
-            columns={columns}
-            dataSource={filteredUsers}
-            rowKey="id"
-            loading={loading}
-            pagination={{
-              pageSize: 10,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              showTotal: (total, range) =>
-                `${range[0]}-${range[1]} จาก ${total} รายการ`,
-            }}
-            locale={{
-              emptyText: (
-                <div style={{ textAlign: "center", padding: "48px" }}>
-                  <TeamOutlined
-                    style={{ fontSize: "48px", color: "#d9d9d9" }}
-                  />
-                  <div style={{ marginTop: "16px", color: "#999" }}>
-                    ไม่มีข้อมูลผู้ใช้
-                  </div>
-                </div>
-              ),
-            }}
-          />
-        </Card>
+          {/* --- 3. ส่วน Filter ที่ Responsive --- */}
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={16}><Input placeholder="ค้นหาชื่อ, username หรือ email..." prefix={<SearchOutlined />} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} allowClear size="large" /></Col>
+            <Col xs={24} md={8}><Select placeholder="กรองตามบทบาท" value={selectedRoleFilter} onChange={setSelectedRoleFilter} allowClear style={{ width: "100%" }} size="large">{roles.map((role) => <Option key={role.value} value={role.value}>{role.label}</Option>)}</Select></Col>
+          </Row>
 
-        {/* Modal */}
-        <Modal
-          title={
-            modalMode === "create"
-              ? "เพิ่มผู้ใช้ใหม่"
-              : modalMode === "edit"
-                ? "แก้ไขข้อมูลผู้ใช้"
-                : "ข้อมูลผู้ใช้"
-          }
-          open={isModalOpen}
-          onCancel={closeModal}
-          footer={
-            modalMode === "view"
-              ? [
-                <Button key="close" onClick={closeModal}>
-                  ปิด
-                </Button>,
-              ]
-              : [
-                <Button key="cancel" onClick={closeModal}>
-                  ยกเลิก
-                </Button>,
-                <Button
-                  key="submit"
-                  type="primary"
-                  loading={formLoading}
-                  onClick={() => form.submit()}
-                >
-                  บันทึก
-                </Button>,
-              ]
-          }
-          width={600}
-        >
-          <Form
-            form={form}
-            layout="vertical"
-            onFinish={handleSubmit}
-            disabled={modalMode === "view"}
-          >
-            <Form.Item
-              label="ชื่อผู้ใช้ (Username)"
-              name="username"
-              rules={[
-                { required: true, message: "กรุณากรอกชื่อผู้ใช้" },
-                { min: 3, message: "ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร" },
-              ]}
-            >
-              <Input prefix={<UserOutlined />} placeholder="กรอกชื่อผู้ใช้" />
-            </Form.Item>
-
-            <Form.Item
-              label="ชื่อ-นามสกุล"
-              name="full_name"
-              rules={[{ required: true, message: "กรุณากรอกชื่อ-นามสกุล" }]}
-            >
-              <Input placeholder="กรอกชื่อ-นามสกุล" />
-            </Form.Item>
-
-            <Form.Item
-              label="อีเมล"
-              name="email"
-              rules={[
-                { required: true, message: "กรุณากรอกอีเมล" },
-                { type: "email", message: "รูปแบบอีเมลไม่ถูกต้อง" },
-              ]}
-            >
-              <Input prefix={<MailOutlined />} placeholder="กรอกอีเมล" />
-            </Form.Item>
-
-            {modalMode === "create" && (
-              <Form.Item
-                label="รหัสผ่าน"
-                name="password"
-                rules={[
-                  { required: true, message: "กรุณากรอกรหัสผ่าน" },
-                  { min: 6, message: "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร" },
-                ]}
-              >
-                <Input.Password
-                  prefix={<LockOutlined />}
-                  placeholder="กรอกรหัสผ่าน"
-                />
-              </Form.Item>
-            )}
-
-            <Form.Item
-              label="บทบาท"
-              name="role"
-              rules={[{ required: true, message: "กรุณาเลือกบทบาท" }]}
-            >
-              <Select placeholder="เลือกบทบาท">
-                {roles.map((role) => (
-                  <Option key={role.value} value={role.value}>
-                    {role.label}
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
-
-            <Form.Item label="แผนก/สาขา" name="department">
-              <Select placeholder="เลือกแผนก" allowClear>
-                {departments.map((dept) => (
-                  <Option key={dept.value} value={dept.value}>
-                    {dept.label}
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
-          </Form>
-        </Modal>
+          {/* --- 4. ปรับปรุง Table --- */}
+          <div className="shadow-md rounded-lg overflow-hidden border border-gray-200">
+            <Table
+              columns={columns}
+              dataSource={filteredUsers}
+              rowKey="id"
+              loading={loading}
+              pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total, range) => `${range[0]}-${range[1]} จาก ${total}` }}
+              scroll={{ x: 'max-content' }}
+              locale={{ emptyText: <Empty description="ไม่พบข้อมูลผู้ใช้ที่ตรงตามเงื่อนไข" /> }}
+            />
+          </div>
+        </div>
       </div>
+
+      {/* --- 5. Modal ที่ Responsive --- */}
+      <Modal
+        title={<div className="flex items-center"> {modalMode === 'create' ? <PlusOutlined /> : modalMode === 'edit' ? <EditOutlined /> : <EyeOutlined />} <span className="ml-2">{modalMode === 'create' ? "เพิ่มผู้ใช้ใหม่" : modalMode === 'edit' ? "แก้ไขข้อมูลผู้ใช้" : "ข้อมูลผู้ใช้"}</span></div>}
+        open={isModalOpen}
+        onCancel={closeModal}
+        footer={modalMode === 'view' ? [<Button key="close" onClick={closeModal}>ปิด</Button>] : [<Button key="cancel" onClick={closeModal}>ยกเลิก</Button>, <Button key="submit" type="primary" loading={formLoading} onClick={() => form.submit()}>บันทึก</Button>]}
+        width={screens.md ? 600 : 'auto'}
+        destroyOnClose
+      >
+        <Spin spinning={loading}>
+          <Form form={form} layout="vertical" onFinish={handleSubmit} disabled={modalMode === "view"} className="mt-6">
+            <Row gutter={24}>
+              <Col xs={24} md={12}><Form.Item label="ชื่อผู้ใช้ (Username)" name="username" rules={[{ required: true, message: "กรุณากรอกชื่อผู้ใช้" }, { min: 3, message: "ต้องมีอย่างน้อย 3 ตัวอักษร" }]}><Input prefix={<UserOutlined />} placeholder="กรอกชื่อผู้ใช้" /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item label="ชื่อ-นามสกุล" name="full_name" rules={[{ required: true, message: "กรุณากรอกชื่อ-นามสกุล" }]}><Input placeholder="กรอกชื่อ-นามสกุล" /></Form.Item></Col>
+            </Row>
+            <Form.Item label="อีเมล" name="email" rules={[{ required: true, message: "กรุณากรอกอีเมล" }, { type: "email", message: "รูปแบบอีเมลไม่ถูกต้อง" }]}><Input prefix={<MailOutlined />} placeholder="กรอกอีเมล" /></Form.Item>
+            {modalMode === "create" && (
+              <Form.Item label="รหัสผ่าน" name="password" rules={[{ required: true, message: "กรุณากรอกรหัสผ่าน" }, { min: 6, message: "ต้องมีอย่างน้อย 6 ตัวอักษร" }]}><Input.Password prefix={<LockOutlined />} placeholder="กรอกรหัสผ่าน" /></Form.Item>
+            )}
+            <Row gutter={24}>
+              <Col xs={24} md={12}><Form.Item label="บทบาท" name="role" rules={[{ required: true, message: "กรุณาเลือกบทบาท" }]}><Select placeholder="เลือกบทบาท">{roles.map((role) => <Option key={role.value} value={role.value}>{role.label}</Option>)}</Select></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item label="แผนก/สาขา" name="department"><Select placeholder="เลือกแผนก" allowClear>{departments.map((dept) => <Option key={dept.value} value={dept.value}>{dept.label}</Option>)}</Select></Form.Item></Col>
+            </Row>
+          </Form>
+        </Spin>
+      </Modal>
     </DashboardLayout>
   );
 }

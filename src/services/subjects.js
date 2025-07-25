@@ -3,64 +3,65 @@ import { supabase } from '@/config/supabase';
 
 // 1. ดึงข้อมูลรายวิชาทั้งหมด
 export async function getAllSubjects() {
-  // เราจะดึงจำนวนนักศึกษาที่ลงทะเบียนมาด้วย
   const { data, error } = await supabase
     .from('subjects')
     .select(`
       *,
-      enrollments:subject_enrollments(count)
+      enrollments:subject_enrollments(count),
+      subject_teachers(teacher:users(id, full_name))
     `)
     .order('academic_year', { ascending: false })
     .order('subject_code');
 
-  if (error) return { success: false, error: error.message };
-  // แปลงข้อมูลเล็กน้อยเพื่อให้ใช้ง่าย
+  if (error) {
+    console.error("Error fetching subjects:", error);
+    return { success: false, error: error.message };
+  }
+
+  // แปลงโครงสร้างข้อมูล teachers ที่ซ้อนกันอยู่ให้อยู่ในรูปแบบที่ใช้ง่าย
   const formattedData = data.map(subject => ({
     ...subject,
-    enrollment_count: subject.enrollments[0]?.count || 0
+    enrollment_count: subject.enrollments[0]?.count || 0,
+    teachers: subject.subject_teachers.map(t => t.teacher)
   }));
   return { success: true, data: formattedData };
 }
 
+
 // 2. สร้างรายวิชาใหม่
 export async function createSubject(subjectData) {
-  try {
-    // --- จุดที่แก้ไข: เตรียมข้อมูลก่อนส่ง ---
-    const dataToInsert = {
-      academic_year: String(subjectData.academic_year), // แปลงเป็น String เสมอ
-      semester: Number(subjectData.semester), // แปลงเป็น Number เสมอ
-      subject_code: subjectData.subject_code,
-      subject_name: subjectData.subject_name,
-      weeks: Number(subjectData.weeks || 16), // ถ้าไม่มีค่ามา ให้ใช้ 16
-      theory_credits: Number(subjectData.theory_credits || 0), // ถ้าไม่มีค่ามา ให้ใช้ 0
-      lab_credits: Number(subjectData.lab_credits || 0),
-      self_study_credits: Number(subjectData.self_study_credits || 0),
-      // คำนวณ total_credits ที่นี่อีกครั้งเพื่อความแน่นอน
-      total_credits: Number(subjectData.theory_credits || 0) + Number(subjectData.lab_credits || 0),
-    };
+  // ไม่จำเป็นต้องใช้ try...catch ที่นี่ เพราะเราจะ return ผลลัพธ์ให้ UI จัดการ
 
-    console.log("Data being inserted:", dataToInsert); // เพิ่ม log เพื่อดูข้อมูลสุดท้ายที่จะส่ง
+  // ไม่ต้องสร้าง dataToInsert ใหม่ เพราะ handleSubmit ใน UI ทำให้แล้ว
+  // แต่ถ้าจะทำที่นี่เพื่อความปลอดภัยก็ดีครับ
+  const { data, error } = await supabase
+    .from('subjects')
+    .insert([subjectData]) // insert ต้องการ Array
+    .select(); // .select() จะคืนค่าเป็น Array
 
-    const { data, error } = await supabase
-      .from('subjects')
-      .insert([dataToInsert]) // ส่งข้อมูลที่เตรียมไว้แล้ว
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    return { success: true, data };
-
-  } catch (error) {
-    console.error("Service Error in createSubject:", error);
+  if (error) {
+    console.error("Supabase createSubject error:", error);
     return { success: false, error: error.message };
   }
+
+  // data ที่ได้คือ [{...}]
+  return { success: true, data };
 }
 
 // 3. อัปเดตรายวิชา
 export async function updateSubject(id, subjectData) {
-  const { data, error } = await supabase.from('subjects').update(subjectData).eq('id', id).select();
-  if (error) return { success: false, error: error.message };
+  const { data, error } = await supabase
+    .from('subjects')
+    .update(subjectData)
+    .eq('id', id)
+    .select(); // .select() จะคืนค่าเป็น Array
+
+  if (error) {
+    console.error("Supabase updateSubject error:", error);
+    return { success: false, error: error.message };
+  }
+
+  // data ที่ได้คือ [{...}]
   return { success: true, data };
 }
 
@@ -126,5 +127,24 @@ export async function enrollStudents(subjectId, studentIds) {
   const { error } = await supabase.from('subject_enrollments').insert(recordsToInsert);
 
   if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+// **ฟังก์ชันใหม่สำหรับอัปเดตผู้สอน**
+export async function updateSubjectTeachers(subjectId, teacherIds = []) {
+  // 1. ลบของเก่า
+  const { error: deleteError } = await supabase
+    .from('subject_teachers')
+    .delete()
+    .eq('subject_id', subjectId);
+  if (deleteError) return { success: false, error: deleteError.message };
+
+  // ถ้าไม่มี teacherIds ใหม่ให้ใส่ ก็จบการทำงาน
+  if (teacherIds.length === 0) return { success: true };
+
+  // 2. เพิ่มของใหม่
+  const records = teacherIds.map(id => ({ subject_id: subjectId, teacher_id: id }));
+  const { error: insertError } = await supabase.from('subject_teachers').insert(records);
+  if (insertError) return { success: false, error: insertError.message };
   return { success: true };
 }
