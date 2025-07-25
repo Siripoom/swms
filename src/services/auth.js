@@ -87,7 +87,7 @@ export function getDefaultRouteByRole(role) {
     student: "/student/dashboard",
   };
 
-  return routes[role] || "/login";
+  return routes[role] || "/";
 }
 // ตรวจสอบ session และ redirect ถ้าจำเป็น
 export async function requireAuth(requiredRoles = null) {
@@ -96,7 +96,7 @@ export async function requireAuth(requiredRoles = null) {
   if (!authData) {
     return {
       authenticated: false,
-      redirect: "/login",
+      redirect: "/",
     };
   }
 

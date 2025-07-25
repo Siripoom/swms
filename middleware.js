@@ -14,7 +14,7 @@ export async function middleware(req) {
   const protectedRoutes = ["/admin", "/department", "/teacher", "/student"];
 
   // กำหนดเส้นทางสาธารณะที่ไม่ต้องตรวจสอบ auth
-  const publicRoutes = ["/login", "/unauthorized"];
+  const publicRoutes = ["/", "/unauthorized"];
 
   const { pathname } = req.nextUrl;
 
@@ -29,12 +29,12 @@ export async function middleware(req) {
 
   // ถ้าไม่มี session และพยายามเข้า protected route
   if (!session && isProtectedRoute) {
-    const redirectUrl = new URL("/login", req.url);
+    const redirectUrl = new URL("/", req.url);
     return NextResponse.redirect(redirectUrl);
   }
 
   // ถ้ามี session และอยู่หน้า login ให้ redirect ไป dashboard
-  if (session && pathname === "/login") {
+  if (session && pathname === "/") {
     try {
       // ดึงข้อมูล role จากฐานข้อมูล
       const { data: userData } = await supabase
@@ -107,7 +107,7 @@ export async function middleware(req) {
     } catch (error) {
       console.error("Error checking permissions in middleware:", error);
       // ถ้ามีข้อผิดพลาดในการตรวจสอบสิทธิ์ ให้ redirect ไป login
-      const redirectUrl = new URL("/login", req.url);
+      const redirectUrl = new URL("/", req.url);
       return NextResponse.redirect(redirectUrl);
     }
   }

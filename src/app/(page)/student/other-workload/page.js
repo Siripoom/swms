@@ -233,13 +233,13 @@ export default function OtherWorkloadPage() {
             <Form.Item label="หมวดหมู่" name="category" rules={[{ required: true }]}>
               <Select>{categories.map(cat => <Option key={cat.key} value={cat.key}>{cat.label}</Option>)}</Select>
             </Form.Item>
-            {isAcademic && (
+            {/* {isAcademic && (
               <Form.Item label="งานที่ได้รับมอบหมาย (ถ้ามี)" name="assignment_id">
                 <Select placeholder="เลือกงาน หรือเว้นว่างสำหรับงานวิชาการอื่นๆ" allowClear>
                   {academicAssignments.map(a => <Option key={a.id} value={a.id}>{`[${a.subject.subject_code}] ${a.assignment_name}`}</Option>)}
                 </Select>
               </Form.Item>
-            )}
+            )} */}
             <Form.Item label="ชื่อกิจกรรม/ภาระงาน" name="activity_name" rules={[{ required: true }]}>
               <Input disabled={isAcademic && !!form.getFieldValue('assignment_id')} placeholder={isAcademic && !!form.getFieldValue('assignment_id') ? "จะถูกเติมอัตโนมัติ" : "กรอกชื่อกิจกรรม/งาน"} />
             </Form.Item>

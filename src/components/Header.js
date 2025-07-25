@@ -10,7 +10,7 @@ export default function Header({ title, userRole }) {
   const handleLogout = async () => {
     const result = await logout();
     if (result.success) {
-      router.push("/"); // เปลี่ยนเป็น "/login" หรือหน้าแรกตามที่คุณต้องการ
+      router.push("/"); // เปลี่ยนเป็น "/" หรือหน้าแรกตามที่คุณต้องการ
     } else {
       alert("เกิดข้อผิดพลาดในการออกจากระบบ: " + result.error);
     }
