@@ -31,7 +31,7 @@ export async function getAllStudents() {
 export async function getInstructors() {
   const { data, error } = await supabase
     .from('users')
-    .select('id, full_name, role')
+    .select('id, full_name, role, department')
     .in('role', ['teacher', 'department_head']) // **เงื่อนไขใหม่: เลือกทั้งสอง role**
     .order('full_name');
 

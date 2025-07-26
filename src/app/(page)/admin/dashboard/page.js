@@ -19,6 +19,14 @@ import {
 const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
 const { Title, Text } = Typography;
 
+const categoryTranslations = {
+  'academic': 'วิชาการ',
+  'research': 'วิจัย',
+  'academic_service': 'บริการวิชาการ',
+  'student_affairs': 'กิจการนักศึกษา',
+  'personal': 'ส่วนตัว'
+};
+
 // --- 1. ออกแบบ StatCard ใหม่ ---
 const StatCard = ({ title, value, unit, icon, color }) => (
   <Card bordered={false} className="shadow-md h-full">
@@ -108,8 +116,25 @@ export default function AdminDashboardPage() {
       } else { setCreditVsWorkloadChart(null); }
 
       if (proportionRes.success) {
-        setProportionChart({ series: [{ name: 'ตามแผน (%)', data: proportionRes.data.map(p => p.target_percentage) }, { name: 'ตามจริง (%)', data: proportionRes.data.map(p => parseFloat(p.actual_percentage.toFixed(1))) }], options: { chart: { type: 'bar', height: 350 }, xaxis: { categories: proportionRes.data.map(p => p.category) }, yaxis: { title: { text: 'สัดส่วน (%)' } } } });
-      } else { setProportionChart(null); }
+        // แปล category ที่ได้จาก API เป็นภาษาไทย
+        const translatedCategories = proportionRes.data.map(p => categoryTranslations[p.category] || p.category);
+
+        const series = [
+          { name: 'ตามแผน (%)', data: proportionRes.data.map(p => p.target_percentage) },
+          { name: 'ตามจริง (%)', data: proportionRes.data.map(p => parseFloat(p.actual_percentage.toFixed(1))) }
+        ];
+
+        setProportionChart({
+          series,
+          options: {
+            chart: { type: 'bar', height: 350 },
+            xaxis: { categories: translatedCategories }, // << ใช้ categories ที่แปลแล้ว
+            yaxis: { title: { text: 'สัดส่วน (%)' } }
+          }
+        });
+      } else {
+        setProportionChart(null);
+      }
 
     } catch (error) { message.error("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์"); }
     finally { setLoading(false); }

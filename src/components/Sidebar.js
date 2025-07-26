@@ -70,25 +70,25 @@ export default function Sidebar({ userRole, userName = "ผู้ใช้งา
           { name: "จัดการรายวิชา", href: "/admin/subjects", icon: BookOpen },
           { name: "คลังภาระงาน", href: "/admin/workload-templates", icon: Archive },
           { name: "กำหนดสัดส่วนภาระงาน", href: "/admin/proportions", icon: Settings },
-          // { name: "รายงาน", href: "/admin/reports", icon: FileText },
+          { name: "รายงาน", href: "/admin/reports", icon: FileText },
         ];
       case "department_head": // ใช้ดีไซน์เดียวกับ Admin
         return [
           { name: "Dashboard", href: "/department/dashboard", icon: LayoutDashboard },
-          // { name: "รายงานภาระงาน", href: "/department/reports", icon: FileText },
+          { name: "รายงานภาระงาน", href: "/department/reports", icon: FileText },
         ];
       case "teacher":
         return [
           { name: "Dashboard", href: "/teacher/dashboard", icon: LayoutDashboard },
           { name: "จัดการภาระงาน", href: "/teacher/assignments", icon: ClipboardList },
-          // { name: "รายงาน", href: "/teacher/reports", icon: FileText },
+          { name: "รายงาน", href: "/teacher/reports", icon: FileText },
         ];
       case "student":
         return [
           { name: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard },
           { name: "ภาระงานวิชาการ", href: "/student/academic-workload", icon: BookOpen },
           { name: "ภาระงานอื่นๆ", href: "/student/other-workload", icon: Archive },
-          // { name: "รายงานของฉัน", href: "/student/my-reports", icon: FileText },
+          { name: "รายงานของฉัน", href: "/student/my-reports", icon: FileText },
         ];
       default:
         return [];

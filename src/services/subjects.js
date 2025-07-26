@@ -148,3 +148,22 @@ export async function updateSubjectTeachers(subjectId, teacherIds = []) {
   if (insertError) return { success: false, error: insertError.message };
   return { success: true };
 }
+
+// src/services/subjects.js
+
+// ฟังก์ชันใหม่: ดึงรายการปีการศึกษาทั้งหมดที่มีในระบบ
+export async function getDistinctAcademicYears() {
+  const { data, error } = await supabase
+    .from('subjects')
+    .select('academic_year');
+
+  if (error) {
+    console.error("Error fetching distinct academic years:", error);
+    return { success: false, error: error.message };
+  }
+
+  // ใช้ Set เพื่อกรองค่าที่ไม่ซ้ำกัน และเรียงลำดับจากมากไปน้อย
+  const distinctYears = [...new Set(data.map(item => item.academic_year))].sort((a, b) => b.localeCompare(a));
+
+  return { success: true, data: distinctYears };
+}

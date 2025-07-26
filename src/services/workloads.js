@@ -2,15 +2,13 @@
 import { supabase } from '@/config/supabase';
 
 
-
 // src/services/workloads.js
 export async function getMyWorkloadReport(filters) {
   const {
-    student_id,
+    student_id, // Required
     academic_year = null,
     semester = null,
   } = filters;
-
   if (!student_id) return { success: false, error: "Student ID is required." };
 
   const { data, error } = await supabase.rpc('get_my_workload_report', {

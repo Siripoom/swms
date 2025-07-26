@@ -32,7 +32,7 @@ const StatCard = ({ title, value, icon, color }) => (
 
 const SubjectCard = ({ subject }) => (
   // *** สำคัญ: ตรวจสอบและแก้ไข Path ให้ถูกต้องตามโครงสร้างโปรเจคของคุณ ***
-  <Link href={`/dept-head/subjects/${subject.id}`} key={subject.id} className="block group">
+  <Link href={`/department/subjects/${subject.id}`} key={subject.id} className="block group">
     <div className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 h-full flex flex-col overflow-hidden border border-gray-200">
       <div className="p-5">
         <div className="flex justify-between items-start mb-4">

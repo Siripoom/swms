@@ -7,12 +7,28 @@ import { getWorkloadReport } from "@/services/reports";
 import { getAllStudents } from "@/services/students";
 import { getAllSubjects } from "@/services/subjects";
 import {
-  Table, Button, Select, Card, Typography, Spin, Tabs, message, Space
+  Table, Button, Select, Card, Typography, Row, Col, Spin, Tabs, message, Space
 } from "antd";
-import { SearchOutlined, FileTextOutlined } from "@ant-design/icons";
+import { DownloadOutlined, FileTextOutlined, SearchOutlined } from "@ant-design/icons";
 import dayjs from 'dayjs';
+import Papa from 'papaparse';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
+
+
+const categoryTranslations = {
+  'academic': 'วิชาการ',
+  'research': 'วิจัย/นวัตกรรม',
+  'academic_service': 'บริการวิชาการ',
+  'student_affairs': 'กิจการนักศึกษา',
+  'personal': 'ส่วนตัว'
+};
+
+const typeTranslations = {
+  'individual': 'งานเดี่ยว',
+  'group': 'งานกลุ่ม'
+};
+
 
 export default function ReportPage() {
   const { role, loading: authLoading } = useAuth();
@@ -47,10 +63,8 @@ export default function ReportPage() {
 
         if (subjectsRes.success) {
           setSubjects(subjectsRes.data);
-          const years = [...new Set(studentsRes.data.map(s => s.academic_year))];
-
-          setAcademicYears(years.sort((a, b) => b.localeCompare(a))); // เรียงจากมากไปน้อย
-
+          const years = [...new Set(subjectsRes.data.map(s => s.academic_year))].sort((a, b) => b - a);
+          setAcademicYears(years);
         } else {
           message.error("ไม่สามารถดึงข้อมูลรายวิชาได้");
         }
@@ -67,134 +81,100 @@ export default function ReportPage() {
   }, [authLoading, role]);
 
   const handleGenerateReport = async () => {
-    console.log('filterMode:', filterMode);
-    console.log('selectedStudent:', selectedStudent);
-    console.log('selectedYear:', selectedYear);
-    console.log('selectedSubject:', selectedSubject);
-
     let filters = {};
-    if (filterMode === 'student') {
-      if (!selectedStudent) {
-        message.warning('กรุณาเลือกนักศึกษา');
-        return;
-      }
-      filters.student_id = selectedStudent;
-    }
+    if (filterMode === 'student') filters.student_id = selectedStudent;
+    if (filterMode === 'year') filters.academic_year = selectedYear;
+    if (filterMode === 'subject') filters.subject_id = selectedSubject;
 
-    if (filterMode === 'year') {
-      if (!selectedYear) {
-        message.warning('กรุณาเลือกปีการศึกษา');
-        return;
-      }
-      filters.academic_year = selectedYear.toString();
-    }
-
-    if (filterMode === 'subject') {
-      if (!selectedSubject) {
-        message.warning('กรุณาเลือกรายวิชา');
-        return;
-      }
-      filters.subject_id = selectedSubject;
-    }
+    // อนุญาตให้กรองแบบไม่เลือกเงื่อนไขได้
+    // if (filterMode !== 'year' && !filters.student_id && !filters.subject_id) {
+    //     message.warning('กรุณาเลือกเงื่อนไขในการสร้างรายงาน');
+    //     return;
+    // }
 
     setLoading(true);
     setReportData([]);
-    console.log('Filters to send:', filters);
-
-    try {
-      const result = await getWorkloadReport(filters);
-      console.log('Result:', result);
-
-      if (result.success) {
-        setReportData(result.data);
-        message.success(`สร้างรายงานสำเร็จ พบ ${result.data.length} รายการ`);
-      } else {
-        message.error("เกิดข้อผิดพลาดในการสร้างรายงาน: " + result.error);
-      }
-    } catch (err) {
-      message.error("เกิดข้อผิดพลาดในการเรียกข้อมูลรายงาน");
-      console.error(err);
-    } finally {
-      setLoading(false);
+    const result = await getWorkloadReport(filters);
+    if (result.success) {
+      setReportData(result.data);
+      message.info(`พบข้อมูล ${result.data.length} รายการ`);
+    } else {
+      message.error("เกิดข้อผิดพลาดในการสร้างรายงาน: " + result.error);
     }
+    setLoading(false);
+  };
+
+  const handleExportCSV = () => {
+    if (reportData.length === 0) {
+      message.warning("ไม่มีข้อมูลสำหรับส่งออก กรุณาสร้างรายงานก่อน");
+      return;
+    }
+
+    const dataForCSV = reportData.map(item => ({
+      'รหัสนักศึกษา': item.student_identifier,
+      'ชื่อ-นามสกุล': item.student_full_name,
+      'ภาระงาน': item.workload_name,
+      'หมวดหมู่': categoryTranslations[item.workload_category] || item.workload_category, // **ใช้พจนานุกรม**
+      'ประเภท': typeTranslations[item.work_type] || '-', // **ใช้พจนานุกรม**
+      'ชั่วโมง': item.hours_display,
+      'รหัสวิชา': item.subject_code || '-',
+      'ชื่อวิชา': item.subject_name || '-',
+      'วันที่': item.record_date,
+    }));
+
+    const csv = Papa.unparse(dataForCSV);
+
+    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `report-workload-${dayjs().format('YYYYMMDD')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    message.success("ส่งออกข้อมูลเป็นไฟล์ CSV สำเร็จ");
   };
 
   const columns = [
-    { title: 'รหัสนักศึกษา', dataIndex: 'student_identifier', key: 'student_identifier', fixed: 'left', width: 120 },
-    { title: 'ชื่อ-นามสกุล', dataIndex: 'student_full_name', key: 'student_full_name', fixed: 'left', width: 200 },
-    { title: 'ภาระงาน', dataIndex: 'workload_name', key: 'workload_name', width: 250 },
-    { title: 'หมวดหมู่', dataIndex: 'workload_category', key: 'workload_category', width: 150 },
-    { title: 'รายวิชา', key: 'subject', render: (_, r) => r.subject_code ? `${r.subject_code} - ${r.subject_name}` : '-', width: 250 },
-    { title: 'วันที่ทำ', dataIndex: 'work_date', key: 'work_date', render: (date) => dayjs(date).format('DD/MM/YYYY'), width: 120 },
-    { title: 'ชั่วโมง', dataIndex: 'hours_spent', key: 'hours_spent', width: 100, align: 'right' },
+    { title: 'รหัสนักศึกษา', dataIndex: 'student_identifier', key: 'student_identifier' },
+    { title: 'ชื่อ-นามสกุล', dataIndex: 'student_full_name', key: 'student_full_name' },
+    { title: 'ภาระงาน', dataIndex: 'workload_name', key: 'workload_name' },
+    {
+      title: 'หมวดหมู่',
+      dataIndex: 'workload_category',
+      key: 'workload_category',
+      // ใช้ render function เพื่อแปลค่า
+      render: (category) => categoryTranslations[category] || category
+    },
+    { title: 'รายวิชา', key: 'subject', render: (_, r) => r.subject_code ? `${r.subject_code}` : '-' },
+    // *** จุดที่แก้ไข ***
+    { title: 'วันที่', dataIndex: 'record_date', key: 'record_date', render: (date) => dayjs(date).format('DD/MM/YYYY') },
+    { title: 'ชั่วโมง', dataIndex: 'hours_display', key: 'hours_display', align: 'right' },
+    {
+      title: 'ประเภท',
+      dataIndex: 'work_type',
+      key: 'work_type',
+      // ใช้ render function เพื่อแปลค่า
+      render: (type) => type ? (typeTranslations[type] || type) : '-'
+    },
   ];
 
   const renderFilters = () => {
     switch (filterMode) {
       case 'student':
-        return (
-          <Select
-            showSearch
-            placeholder="เลือกนักศึกษา..."
-            value={selectedStudent}
-            onChange={setSelectedStudent}
-            style={{ width: 300 }}
-            options={students.map(s => ({
-              value: s.id,
-              label: `${s.user?.full_name || 'N/A'} (${s.student_id})`
-            }))}
-            optionFilterProp="label"
-            loading={isDropdownLoading}
-            allowClear
-          />
-        );
+        return <Select showSearch placeholder="เลือกนักศึกษา..." value={selectedStudent} onChange={setSelectedStudent} style={{ width: 300 }} options={students.map(s => ({ value: s.id, label: `${s.user?.full_name || 'N/A'} (${s.student_id})` }))} optionFilterProp="label" loading={isDropdownLoading} allowClear />;
       case 'year':
-        return (
-          <Select
-            placeholder="เลือกปีการศึกษา..."
-            value={selectedYear}
-            onChange={(value) => setSelectedYear(value)}
-            options={academicYears.map(y => ({ value: y, label: `ปีการศึกษา ${y}` }))}
-            allowClear
-          />
-        );
+        return <Select placeholder="เลือกปีการศึกษา..." value={selectedYear} onChange={setSelectedYear} style={{ width: 300 }} options={academicYears.map(y => ({ value: y, label: `ปีการศึกษา ${y}` }))} loading={isDropdownLoading} allowClear />;
       case 'subject':
-        return (
-          <Select
-            showSearch
-            placeholder="เลือกรายวิชา..."
-            value={selectedSubject}
-            onChange={setSelectedSubject}
-            style={{ width: 300 }}
-            options={subjects.map(s => ({
-              value: s.id,
-              label: `${s.subject_code} - ${s.subject_name}`
-            }))}
-            optionFilterProp="label"
-            loading={isDropdownLoading}
-            allowClear
-          />
-        );
+        return <Select showSearch placeholder="เลือกรายวิชา..." value={selectedSubject} onChange={setSelectedSubject} style={{ width: 300 }} options={subjects.map(s => ({ value: s.id, label: `${s.subject_code} - ${s.subject_name}` }))} optionFilterProp="label" loading={isDropdownLoading} allowClear />;
       default:
         return null;
     }
-  };
-
-  if (authLoading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <Spin size="large" />
-      </div>
-    );
   }
 
-  if (role !== 'admin') {
-    return (
-      <DashboardLayout>
-        <div>Access Denied</div>
-      </DashboardLayout>
-    );
-  }
+  if (authLoading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spin size="large" /></div>;
+  if (role !== 'admin') return <DashboardLayout><div>Access Denied</div></DashboardLayout>;
 
   return (
     <DashboardLayout title="รายงาน">
@@ -203,7 +183,6 @@ export default function ReportPage() {
           <Title level={2} style={{ margin: 0, marginBottom: 16 }}>
             <FileTextOutlined style={{ marginRight: 8 }} /> รายงานภาระงานนักศึกษา
           </Title>
-
           <Tabs
             activeKey={filterMode}
             onChange={(key) => {
@@ -219,16 +198,13 @@ export default function ReportPage() {
               { label: 'รายวิชา', key: 'subject' },
             ]}
           />
-
           <Space style={{ marginTop: 16, marginBottom: 24 }} wrap>
             {renderFilters()}
-            <Button
-              type="primary"
-              icon={<SearchOutlined />}
-              onClick={handleGenerateReport}
-              loading={loading}
-            >
-              สร้างรายงาน
+            <Button type="default" icon={<SearchOutlined />} onClick={handleGenerateReport} loading={loading}>
+              แสดงข้อมูล
+            </Button>
+            <Button type="primary" icon={<DownloadOutlined />} onClick={handleExportCSV} disabled={reportData.length === 0}>
+              Export to CSV
             </Button>
           </Space>
 
@@ -239,9 +215,7 @@ export default function ReportPage() {
             loading={loading}
             scroll={{ x: 1300 }}
             bordered
-            locale={{
-              emptyText: 'กรุณาเลือกเงื่อนไขและกด "สร้างรายงาน" เพื่อแสดงข้อมูล',
-            }}
+            locale={{ emptyText: 'กรุณาเลือกเงื่อนไขและกด "แสดงข้อมูล" เพื่อสร้างรายงาน' }}
           />
         </Card>
       </div>

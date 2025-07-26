@@ -23,6 +23,15 @@ const { Title, Text } = Typography;
 const { Option } = Select;
 const { useBreakpoint } = Grid; // 2. Destructure useBreakpoint
 
+const categoryTranslations = {
+  'academic': 'วิชาการ',
+  'research': 'วิจัย/นวัตกรรม',
+  'academic_service': 'บริการวิชาการ',
+  'student_affairs': 'กิจการนักศึกษา',
+  'personal': 'ส่วนตัว'
+};
+
+
 export default function TeacherAssignmentsPage() {
   const { user, role, loading: authLoading } = useAuth();
   const [assignments, setAssignments] = useState([]);
@@ -154,7 +163,11 @@ export default function TeacherAssignmentsPage() {
         <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-6">
           <Form.Item label="ดึงข้อมูลจากคลัง (ไม่บังคับ)" name="workload_template_id" tooltip="เลือกงานจากคลังเพื่อกรอกข้อมูลพื้นฐานให้อัตโนมัติ">
             <Select placeholder="เลือกต้นแบบภาระงาน..." allowClear onChange={handleTemplateChange} suffixIcon={<AppstoreAddOutlined />}>
-              {templates.map(tpl => <Option key={tpl.id} value={tpl.id}>{`[${tpl.category}] ${tpl.name} (${tpl.hours} ชม.)`}</Option>)}
+              {templates.map(tpl => (
+                <Option key={tpl.id} value={tpl.id}>
+                  {`[${categoryTranslations[tpl.category] || tpl.category}] ${tpl.name} (${tpl.hours} ชม.)`}
+                </Option>
+              ))}
             </Select>
           </Form.Item>
           {/* 6. ปรับ Col ใน Form ให้รองรับ Responsive */}

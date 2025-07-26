@@ -2,6 +2,7 @@
 import { supabase } from '@/config/supabase';
 
 export async function getWorkloadReport(filters = {}) {
+  // ตั้งค่า default ให้เป็น null ถ้าไม่มีค่าส่งมา
   const {
     student_id = null,
     academic_year = null,
