@@ -60,3 +60,22 @@ export async function getDashboardProportionComparison(academicYear, semester, y
   if (error) return { success: false, error: error.message };
   return { success: true, data };
 }
+
+export async function getDashboardWorkloadDistribution(academicYear, semester) {
+  const { data, error } = await supabase.rpc('get_dashboard_workload_distribution', { p_academic_year: academicYear, p_semester: semester || 0 });
+  if (error) return { success: false, error: error.message };
+  return { success: true, data };
+}
+
+export async function getDashboardAssignmentVsWorkload(academicYear, semester) {
+  const { data, error } = await supabase.rpc('get_dashboard_assignment_vs_workload', { p_academic_year: academicYear, p_semester: semester || 0 });
+  if (error) return { success: false, error: error.message };
+  return { success: true, data };
+}
+
+export async function getDashboardWorkloadBoxplot(academicYear, semester) {
+  const { data, error } = await supabase.rpc('get_dashboard_workload_boxplot', { p_academic_year: academicYear, p_semester: semester || 0 });
+  if (error) return { success: false, error: error.message };
+  return { success: true, data };
+}
+
