@@ -1,247 +1,327 @@
 "use client";
+
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
+import {
+  getAdminDashboardSummary,
+  getDashboardWorkloadByYearLevel,
+  getDashboardWorkloadBySubject,
+  getDashboardCreditVsWorkload,
+  getDashboardProportionComparison,
+  getDashboardWorkloadDistribution,
+  getDashboardAssignmentVsWorkload
+} from "@/services/adminDashboard";
+import { Spin, Card, Typography, Row, Col, Select, message, Empty, Space } from "antd";
+import dynamic from 'next/dynamic';
+import {
+  BarChartOutlined, AreaChartOutlined, DotChartOutlined, PieChartOutlined, TeamOutlined, BookOutlined, RiseOutlined, ApartmentOutlined, UsergroupAddOutlined
+} from "@ant-design/icons";
+
+const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
+const { Title, Text } = Typography;
+
+const categoryTranslations = {
+  'academic': 'วิชาการ', 'research': 'วิจัย', 'academic_service': 'บริการวิชาการ',
+  'student_affairs': 'กิจการนักศึกษา', 'personal': 'ส่วนตัว'
+};
+
+const StatCard = ({ title, value, unit, icon, color }) => (
+  <Card bordered={false} className="shadow-md h-full">
+    <div className="flex items-start">
+      <div className="text-2xl p-3 rounded-lg mr-4" style={{ backgroundColor: `${color}1A`, color: color }}>{icon}</div>
+      <div>
+        <Text type="secondary" className="font-medium">{title}</Text>
+        <Title level={4} className="!mt-1 !mb-0">{value} <span className="text-lg font-normal text-gray-500">{unit}</span></Title>
+      </div>
+    </div>
+  </Card>
+);
+
+const ChartCard = ({ title, icon, chartData, loading, type = 'bar', emptyText = "ไม่มีข้อมูลสำหรับแสดงผล" }) => (
+  <Card
+    title={<div className="flex items-center gap-2"><div className="text-lg">{icon}</div>{title}</div>}
+    bordered={false}
+    className="shadow-md h-full"
+  >
+    <div style={{ height: 350 }}>
+      {loading ? (
+        <div className="flex items-center justify-center h-full"><Spin /></div>
+      ) : chartData ? (
+        <Chart options={chartData.options} series={chartData.series} type={type} height="100%" />
+      ) : (
+        <div className="flex items-center justify-center h-full"><Empty description={emptyText} /></div>
+      )}
+    </div>
+  </Card>
+);
 
 export default function AdminDashboardPage() {
+  const { role, loading: authLoading } = useAuth();
+
+  const [summaryData, setSummaryData] = useState(null);
+  const [yearLevelChart, setYearLevelChart] = useState(null);
+  const [subjectChart, setSubjectChart] = useState(null);
+  const [creditVsWorkloadChart, setCreditVsWorkloadChart] = useState(null);
+  const [proportionChart, setProportionChart] = useState(null);
+  const [distributionChart, setDistributionChart] = useState(null);
+  const [assignmentVsWorkloadChart, setAssignmentVsWorkloadChart] = useState(null);
+
+  const [loading, setLoading] = useState(true);
+  const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear() + 543));
+  const [selectedSemester, setSelectedSemester] = useState(0);
+
+  const fetchData = useCallback(async () => {
+    if (authLoading || role !== 'admin') return;
+
+    setLoading(true);
+    const [
+      summaryRes, yearLevelRes, subjectRes, creditRes,
+      proportionRes, distributionRes, assignmentVsWorkloadRes
+    ] = await Promise.all([
+      getAdminDashboardSummary(selectedYear, selectedSemester),
+      getDashboardWorkloadByYearLevel(selectedYear, selectedSemester),
+      getDashboardWorkloadBySubject(selectedYear, selectedSemester),
+      getDashboardCreditVsWorkload(selectedYear, selectedSemester),
+      getDashboardProportionComparison(selectedYear, selectedSemester, 0),
+      getDashboardWorkloadDistribution(selectedYear, selectedSemester),
+      getDashboardAssignmentVsWorkload(selectedYear, selectedSemester)
+    ]);
+
+    // Process Summary
+    setSummaryData(summaryRes.success ? summaryRes.data : null);
+
+    // Process Graph 1: Year Level Stacked Bar
+    if (yearLevelRes.success && yearLevelRes.data.length > 0) {
+      const categories = Object.keys(categoryTranslations);
+      const yearLevels = [...new Set(yearLevelRes.data.map(item => item.year_level))].sort();
+      const series = categories.map(category => ({
+        name: categoryTranslations[category],
+        data: yearLevels.map(year => {
+          const item = yearLevelRes.data.find(d => d.year_level === year && d.category === category);
+          const avgHours = (item && item.student_count > 0) ? (item.total_hours / item.student_count) : 0;
+          return parseFloat(avgHours.toFixed(1));
+        })
+      }));
+      setYearLevelChart({ series, options: { chart: { stacked: true }, xaxis: { categories: yearLevels.map(y => `ปี ${y}`) }, yaxis: { title: { text: 'ชม.เฉลี่ย/คน' } } } });
+    } else { setYearLevelChart(null); }
+
+    // Process Graph 2: Top Subjects
+    if (subjectRes.success && subjectRes.data.length > 0) {
+      const topSubjects = subjectRes.data.slice(0, 10);
+      setSubjectChart({ series: [{ name: 'ชม. ที่คาดหวัง', data: topSubjects.map(s => parseFloat(s.avg_hours.toFixed(1))) }], options: { chart: { type: 'bar', height: 350 }, plotOptions: { bar: { horizontal: true } }, dataLabels: { enabled: false }, xaxis: { categories: topSubjects.map(s => s.subject_code) } } });
+    } else { setSubjectChart(null); }
+
+    // --- Process Graph 3: Workload Distribution (Min/Avg/Max) ---
+    if (distributionRes.success && distributionRes.data.length > 0) {
+      const data = distributionRes.data;
+      const categories = data.map(d => `ปี ${d.year_level}`);
+      setDistributionChart({
+        series: [
+          { name: 'ค่าต่ำสุด', data: data.map(d => parseFloat(d.min_hours.toFixed(1))) },
+          { name: 'ค่าเฉลี่ย', data: data.map(d => parseFloat(d.avg_hours.toFixed(1))) },
+          { name: 'ค่าสูงสุด', data: data.map(d => parseFloat(d.max_hours.toFixed(1))) }
+        ],
+        options: {
+          chart: { type: 'bar', height: 350 },
+          plotOptions: { bar: { horizontal: false, columnWidth: '75%', dataLabels: { position: 'top' } } },
+          dataLabels: { enabled: true, formatter: (val) => val.toFixed(0), offsetY: -20, style: { fontSize: '12px', colors: ["#304758"] } },
+          stroke: { show: true, width: 2, colors: ['transparent'] },
+          xaxis: { categories: categories },
+          yaxis: { title: { text: 'ชั่วโมงทำงานรวม' } },
+          fill: { opacity: 1 },
+          tooltip: { y: { formatter: (val) => val.toFixed(1) + " ชั่วโมง" } }
+        }
+      });
+    } else { setDistributionChart(null); }
+
+    // Process Graph 4: Credit vs Workload
+    if (creditRes.success && creditRes.data.length > 0) {
+      const rawData = creditRes.data;
+
+      // 1. หากลุ่มหน่วยกิตที่ไม่ซ้ำกันสำหรับแกน X และ Legend
+      const creditGroups = [...new Set(rawData.map(d => d.total_credits))].sort((a, b) => a - b);
+
+      // 2. สร้าง series หลายชุด แยกตามกลุ่มหน่วยกิต
+      const series = creditGroups.map(creditValue => {
+        return {
+          name: `${creditValue} หน่วยกิต`,
+          data: rawData
+            .filter(d => d.total_credits === creditValue)
+            .map(d => [d.total_credits, parseFloat(d.avg_hours.toFixed(1))])
+        };
+      });
+
+      setCreditVsWorkloadChart({
+        series: series,
+        options: {
+          chart: { type: 'scatter', height: 350 },
+          xaxis: {
+            title: { text: 'จำนวนหน่วยกิต' },
+            type: 'numeric',
+            // หาค่า min/max จากข้อมูลจริงเพื่อให้แกนสวยงาม
+            min: Math.floor(Math.min(...creditGroups)) - 1,
+            max: Math.ceil(Math.max(...creditGroups)) + 1,
+            // กำหนดจำนวนขีดบนแกน X ให้พอดีกับจำนวนเต็มในช่วงนั้น
+            tickAmount: (Math.ceil(Math.max(...creditGroups)) + 1) - (Math.floor(Math.min(...creditGroups)) - 1),
+            labels: {
+              // บังคับให้แสดงเป็นเลขจำนวนเต็มเสมอ
+              formatter: function (val) {
+                return val.toFixed(0);
+              }
+            }
+          },
+          yaxis: { title: { text: 'ชม. ที่คาดหวังเฉลี่ย' } },
+          legend: {
+            position: 'bottom',
+            horizontalAlign: 'center',
+            markers: { radius: 12 }
+          },
+          // Tooltip แบบ Custom ที่สามารถหาชื่อวิชากลับมาได้
+          tooltip: {
+            custom: function ({ seriesIndex, dataPointIndex, w }) {
+              // หาข้อมูลของจุดที่กำลังชี้
+              const pointData = w.globals.initialSeries[seriesIndex].data[dataPointIndex];
+              const creditVal = pointData[0];
+              const hourVal = pointData[1];
+
+              // ค้นหาวิชาที่ตรงกับค่า credit และ hour ใน rawData
+              // อาจจะมีหลายตัวที่ค่าเท่ากัน, เราจะเอาตัวแรกที่เจอ
+              const subject = rawData.find(d =>
+                d.total_credits == creditVal &&
+                parseFloat(d.avg_hours.toFixed(1)) == hourVal
+              );
+
+              const subjectCode = subject ? subject.subject_code : 'N/A';
+
+              return `<div class="p-2 bg-white shadow-lg rounded border">
+                              <strong>วิชา: ${subjectCode}</strong><br/>
+                              <span>หน่วยกิต: ${creditVal}</span><br/>
+                              <span>ชม. เฉลี่ย: ${hourVal}</span>
+                            </div>`;
+            }
+          }
+        }
+      });
+    } else {
+      setCreditVsWorkloadChart(null);
+    }
+
+    // Process Graph 5: Assignment vs Workload
+    if (assignmentVsWorkloadRes.success && assignmentVsWorkloadRes.data.length > 0) {
+      const rawData = assignmentVsWorkloadRes.data;
+
+      // 1. หากลุ่มของ "รายวิชา" ที่ไม่ซ้ำกัน (ใช้ subject_name)
+      const subjectGroups = [...new Set(rawData.map(d => d.subject_name))];
+
+      // 2. สร้าง series สำหรับ "แต่ละรายวิชา"
+      const series = subjectGroups.map(subjectName => {
+        // กรองข้อมูลเฉพาะของวิชานี้
+        const subjectData = rawData.filter(d => d.subject_name === subjectName);
+        return {
+          name: subjectName, // ชื่อ series คือชื่อวิชา
+          // data คือ Array ของจุด [x, y]
+          data: subjectData.map(d => [d.assignment_count, parseFloat(d.avg_hours.toFixed(1))])
+        };
+      });
+
+      // 3. คำนวณ min/max ของแกน X เพื่อการแสดงผลที่สวยงาม
+      const allAssignmentCounts = rawData.map(d => d.assignment_count);
+      const minCount = Math.min(...allAssignmentCounts);
+      const maxCount = Math.max(...allAssignmentCounts);
+
+      setAssignmentVsWorkloadChart({
+        series: series, // ใช้ series ใหม่ที่มีหลายชุด
+        options: {
+          chart: { type: 'scatter', height: 350 },
+          xaxis: {
+            title: { text: 'จำนวนชิ้นงานในวิชา' },
+            type: 'numeric',
+            min: Math.floor(minCount) > 0 ? Math.floor(minCount) - 1 : 0,
+            max: Math.ceil(maxCount) + 1,
+            tickAmount: Math.ceil(maxCount) - Math.floor(minCount) + 2,
+            labels: {
+              formatter: function (val) {
+                return val.toFixed(0);
+              }
+            }
+          },
+          yaxis: { title: { text: 'ชม. ที่คาดหวังเฉลี่ย' } },
+          // แสดง Legend เพื่อบอกว่าสีไหนคือวิชาอะไร
+          legend: {
+            position: 'bottom',
+            horizontalAlign: 'center',
+            markers: { radius: 12 }
+          },
+          tooltip: {
+            x: { formatter: (val) => `${val} ชิ้นงาน` },
+            y: { formatter: (val) => `${val.toFixed(1)} ชม.` }
+          }
+        }
+      });
+    } else {
+      setAssignmentVsWorkloadChart(null);
+    }
+    // Process Graph 6: Proportion Comparison
+    if (proportionRes.success && proportionRes.data.length > 0) {
+      const categories = proportionRes.data.map(p => categoryTranslations[p.category] || p.category);
+      const series = [{ name: 'ตามแผน (%)', data: proportionRes.data.map(p => p.target_percentage) }, { name: 'ตามจริง (%)', data: proportionRes.data.map(p => parseFloat(p.actual_percentage.toFixed(1))) }];
+      setProportionChart({ series, options: { chart: { type: 'bar', height: 350 }, xaxis: { categories: categories }, yaxis: { title: { text: 'สัดส่วน (%)' } } } });
+    } else { setProportionChart(null); }
+
+    setLoading(false);
+  }, [authLoading, role, selectedYear, selectedSemester]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  if (authLoading) return <div className="flex justify-center items-center h-screen"><Spin size="large" /></div>;
+  if (role !== 'admin') return <DashboardLayout><div>Access Denied</div></DashboardLayout>;
+
+  const summaryStats = [
+    { title: "ชม. ภาระงานเฉลี่ย", value: Number(summaryData?.avg_total_hours || 0).toFixed(1), unit: "ชม./คน", icon: <TeamOutlined />, color: '#3b82f6' },
+    { title: "ชม. วิชาการเฉลี่ย", value: Number(summaryData?.avg_academic_hours || 0).toFixed(1), unit: "ชม./คน", icon: <BookOutlined />, color: '#8b5cf6' },
+    { title: "ชม. กิจการ นศ. เฉลี่ย", value: Number(summaryData?.avg_student_affairs_hours || 0).toFixed(1), unit: "ชม./คน", icon: <ApartmentOutlined />, color: '#16a34a' },
+    { title: "ชิ้นงานเฉลี่ย/วิชา", value: Number(summaryData?.avg_assignment_count_per_subject || 0).toFixed(1), unit: "ชิ้น/วิชา", icon: <RiseOutlined />, color: '#f97316' },
+    { title: "นศ. ที่ลงทะเบียน", value: summaryData?.total_students || 0, unit: "คน", icon: <UsergroupAddOutlined />, color: '#ef4444' }
+  ];
+
+  const chartCards = [
+    { title: "ภาพรวมภาระงานตามชั้นปี (กราฟ 1)", icon: <BarChartOutlined />, chartData: yearLevelChart, type: 'bar' },
+    { title: "10 อันดับรายวิชาภาระงานสูงสุด (กราฟ 2)", icon: <AreaChartOutlined />, chartData: subjectChart, type: 'bar' },
+    { title: "การกระจายตัวของภาระงาน (กราฟ 3)", icon: <BarChartOutlined />, chartData: distributionChart, type: 'bar' },
+    { title: "หน่วยกิต vs ภาระงาน (กราฟ 4)", icon: <DotChartOutlined />, chartData: creditVsWorkloadChart, type: 'scatter' },
+    { title: "ชิ้นงาน vs ชั่วโมงทำงาน (กราฟ 5)", icon: <DotChartOutlined />, chartData: assignmentVsWorkloadChart, type: 'scatter' },
+    { title: "สัดส่วนภาระงาน: แผน vs จริง (กราฟ 6)", icon: <PieChartOutlined />, chartData: proportionChart, type: 'bar' }
+  ];
+
   return (
-    <DashboardLayout title="Dashboard ผู้ดูแลระบบ" requiredRole={["admin"]}>
-      <div className="space-y-6">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <svg
-                  className="w-6 h-6 text-blue-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"
-                  />
-                </svg>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">
-                  ชั่วโมงภาระงานเฉลี่ย
-                </p>
-                <p className="text-2xl font-semibold text-gray-900">42.5 ชม.</p>
-              </div>
+    <DashboardLayout title="Dashboard ผู้ดูแลระบบ">
+      <div className="bg-white min-h-screen p-4 sm:p-6 lg:p-8">
+        <div className="max-w-7xl mx-auto space-y-8">
+          <div className="flex flex-wrap justify-between items-center gap-4">
+            <div>
+              <Title level={2} className="!mb-1">Dashboard ภาพรวม</Title>
+              <Text type="secondary">ภาพรวมข้อมูลภาระงานทั้งหมดในระบบ</Text>
             </div>
+            <Space direction="vertical" align="end" className="w-full sm:w-auto sm:flex-row">
+              <Select value={selectedYear} onChange={setSelectedYear} style={{ width: '100%' }} size="large" options={[{ value: '2568', label: 'ปี 2568' }, { value: '2567', label: 'ปี 2567' }, { value: '2566', label: 'ปี 2566' }]} />
+              <Select value={selectedSemester} onChange={setSelectedSemester} style={{ width: '100%' }} size="large" options={[{ value: 0, label: 'ทุกภาคการศึกษา' }, { value: 1, label: 'ภาคเรียนที่ 1' }, { value: 2, label: 'ภาคเรียนที่ 2' }, { value: 3, label: 'ภาคฤดูร้อน' }]} />
+            </Space>
           </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <svg
-                  className="w-6 h-6 text-green-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                  />
-                </svg>
+          {loading ? <div className="text-center py-10"><Spin size="large" /></div> : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                {summaryStats.map(stat => <StatCard key={stat.title} {...stat} />)}
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">
-                  ภาระงานวิชาการเฉลี่ย
-                </p>
-                <p className="text-2xl font-semibold text-gray-900">28.3 ชม.</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-yellow-100 rounded-lg">
-                <svg
-                  className="w-6 h-6 text-yellow-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                  />
-                </svg>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">
-                  จำนวนชิ้นงานเฉลี่ย
-                </p>
-                <p className="text-2xl font-semibold text-gray-900">8.2 ชิ้น</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <svg
-                  className="w-6 h-6 text-purple-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                  />
-                </svg>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">
-                  นักศึกษาที่ลงทะเบียน
-                </p>
-                <p className="text-2xl font-semibold text-gray-900">156 คน</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              ภาพรวมภาระงานตามชั้นปี
-            </h3>
-            <div className="h-64 flex items-center justify-center text-gray-500">
-              [กราฟแท่งแบบซ้อน - จะแสดงผลเมื่อมีข้อมูล]
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              การเปรียบเทียบภาระงานรายวิชา
-            </h3>
-            <div className="h-64 flex items-center justify-center text-gray-500">
-              [กราฟแท่ง - จะแสดงผลเมื่อมีข้อมูล]
-            </div>
-          </div>
-        </div>
-
-        {/* Additional Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              การกระจายตัวของภาระงาน
-            </h3>
-            <div className="h-64 flex items-center justify-center text-gray-500">
-              [Box Plot - จะแสดงผลเมื่อมีข้อมูล]
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              ความสัมพันธ์หน่วยกิต vs ภาระงาน
-            </h3>
-            <div className="h-64 flex items-center justify-center text-gray-500">
-              [Scatter Plot - จะแสดงผลเมื่อมีข้อมูล]
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            การดำเนินการด่วน
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <button className="p-4 text-center border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <div className="text-blue-600 mb-2">
-                <svg
-                  className="w-8 h-8 mx-auto"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                  />
-                </svg>
-              </div>
-              <span className="text-sm font-medium">เพิ่มผู้ใช้</span>
-            </button>
-
-            <button className="p-4 text-center border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <div className="text-green-600 mb-2">
-                <svg
-                  className="w-8 h-8 mx-auto"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                  />
-                </svg>
-              </div>
-              <span className="text-sm font-medium">ดูรายงาน</span>
-            </button>
-
-            <button className="p-4 text-center border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <div className="text-yellow-600 mb-2">
-                <svg
-                  className="w-8 h-8 mx-auto"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                </svg>
-              </div>
-              <span className="text-sm font-medium">ตั้งค่าระบบ</span>
-            </button>
-
-            <button className="p-4 text-center border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <div className="text-purple-600 mb-2">
-                <svg
-                  className="w-8 h-8 mx-auto"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-              </div>
-              <span className="text-sm font-medium">ส่งออกข้อมูล</span>
-            </button>
-          </div>
+              <Row gutter={[24, 24]}>
+                {chartCards.map(chart => (
+                  <Col xs={24} lg={12} key={chart.title}>
+                    <ChartCard {...chart} />
+                  </Col>
+                ))}
+              </Row>
+            </>
+          )}
         </div>
       </div>
     </DashboardLayout>

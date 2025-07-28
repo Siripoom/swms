@@ -27,14 +27,14 @@ export default function UnauthorizedPage() {
       const defaultRoute = getDefaultRouteByRole(userRole);
       router.push(defaultRoute);
     } else {
-      router.push("/login");
+      router.push("/");
     }
   };
 
   const handleLogout = async () => {
     const { logout } = await import("@/services/auth");
     await logout();
-    router.push("/login");
+    router.push("/");
   };
 
   if (loading) {

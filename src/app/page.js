@@ -143,8 +143,9 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <Card
           className="shadow-xl border-0 rounded-2xl overflow-hidden"
-          bodyStyle={{ padding: 0 }}
+          styles={{ body: { padding: 0 } }} // ✅ ใช้ styles.body แทน
         >
+
           {/* Header Section */}
           <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-12 text-center text-white">
             <div className="mb-4">
@@ -218,9 +219,9 @@ export default function LoginPage() {
                       จดจำการเข้าสู่ระบบ
                     </Checkbox>
                   </Form.Item>
-                  <Button type="link" className="p-0 text-sm">
+                  {/* <Button type="link" className="p-0 text-sm">
                     ลืมรหัสผ่าน?
-                  </Button>
+                  </Button> */}
                 </div>
               </Form.Item>
 
@@ -237,14 +238,14 @@ export default function LoginPage() {
                 </Button>
               </Form.Item>
 
-              <div className="text-center text-sm text-gray-500 mt-6">
+              {/* <div className="text-center text-sm text-gray-500 mt-6">
                 <Text>
                   ต้องการความช่วยเหลือ?{" "}
                   <Button type="link" className="p-0 text-sm">
                     ติดต่อผู้ดูแลระบบ
                   </Button>
                 </Text>
-              </div>
+              </div> */}
             </Form>
           </div>
         </Card>

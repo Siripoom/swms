@@ -38,19 +38,16 @@ export async function checkAuth() {
 // ล็อกเอาท์
 export async function logout() {
   try {
+    // onAuthStateChange ใน AuthContext จะตรวจจับ event 'SIGNED_OUT'
+    // และเคลียร์ state ให้เองโดยอัตโนมัติ
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
-
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("rememberLogin");
-
     return { success: true };
   } catch (error) {
     console.error("Logout error:", error);
     return { success: false, error: error.message };
   }
 }
-
 // เข้าสู่ระบบ
 export async function signIn(email, password) {
   try {
@@ -61,34 +58,16 @@ export async function signIn(email, password) {
 
     if (error) throw error;
 
-    if (data.user) {
-      // ดึงข้อมูล role
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", data.user.id)
-        .single();
+    // ไม่ต้องดึง role ที่นี่แล้ว
+    return { success: true, user: data.user };
 
-      if (userError) {
-        throw new Error("ไม่สามารถดึงข้อมูลบทบาทผู้ใช้ได้");
-      }
-
-      return {
-        success: true,
-        user: data.user,
-        role: userData.role,
-        session: data.session,
-      };
-    }
-
-    return { success: false, error: "ข้อมูลผู้ใช้ไม่ถูกต้อง" };
   } catch (error) {
     console.error("Sign in error:", error);
     return { success: false, error: error.message };
   }
 }
 
-// ตรวจสอบสิทธิ์การเข้าถึงหน้า
+// ฟังก์ชัน Helper สำหรับตรวจสอบสิทธิ์ (สามารถเรียกใช้ได้ทุกที่)
 export function hasPermission(userRole, requiredRoles) {
   if (!userRole || !requiredRoles) return false;
 
@@ -108,9 +87,8 @@ export function getDefaultRouteByRole(role) {
     student: "/student/dashboard",
   };
 
-  return routes[role] || "/login";
+  return routes[role] || "/";
 }
-
 // ตรวจสอบ session และ redirect ถ้าจำเป็น
 export async function requireAuth(requiredRoles = null) {
   const authData = await checkAuth();
@@ -118,7 +96,7 @@ export async function requireAuth(requiredRoles = null) {
   if (!authData) {
     return {
       authenticated: false,
-      redirect: "/login",
+      redirect: "/",
     };
   }
 

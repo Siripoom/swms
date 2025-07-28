@@ -1,132 +1,88 @@
+// src/components/DashboardLayout.js
+
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { requireAuth, onAuthStateChange } from "@/services/auth";
+import { useAuth } from "@/contexts/AuthContext";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import { Spin } from "antd";
 
 export default function DashboardLayout({ children, title, requiredRole }) {
-  const [authState, setAuthState] = useState({
-    loading: true,
-    authenticated: false,
-    authorized: false,
-    user: null,
-  });
+  // 1. ดึงข้อมูลทั้งหมดจาก AuthContext เดิมของคุณ
+  // เรามี user, role, และ userProfile อยู่ในนี้แล้ว
+  const { user, role, userProfile, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    let mounted = true;
+    if (loading) return; // รอให้ Context โหลดเสร็จก่อน
+    if (!user) {
+      router.push("/");
+      return;
+    }
+    // เช็คสิทธิ์หลังจากที่ user และ role มีค่าแล้ว
+    if (requiredRole && !requiredRole.includes(role)) {
+      router.push("/unauthorized");
+      return;
+    }
+  }, [user, role, loading, router, requiredRole]);
 
-    const checkAuthentication = async () => {
-      try {
-        const authResult = await requireAuth(requiredRole);
-
-        if (!mounted) return;
-
-        if (!authResult.authenticated) {
-          router.push(authResult.redirect);
-          return;
-        }
-
-        if (!authResult.authorized) {
-          router.push(authResult.redirect);
-          return;
-        }
-
-        setAuthState({
-          loading: false,
-          authenticated: true,
-          authorized: true,
-          user: authResult.user,
-        });
-
-        // เก็บ role ใน localStorage
-        if (authResult.user?.role) {
-          localStorage.setItem("userRole", authResult.user.role);
-        }
-      } catch (error) {
-        console.error("Auth check error:", error);
-        if (mounted) {
-          router.push("/login");
-        }
-      }
-    };
-
-    checkAuthentication();
-
-    // ฟัง auth state changes
-    const {
-      data: { subscription },
-    } = onAuthStateChange(async ({ event, session, authData }) => {
-      if (!mounted) return;
-
-      if (event === "SIGNED_OUT" || !session) {
-        router.push("/login");
-      } else if (event === "SIGNED_IN" && authData) {
-        // ตรวจสอบสิทธิ์อีกครั้งเมื่อมีการ sign in
-        const authResult = await requireAuth(requiredRole);
-
-        if (!authResult.authenticated || !authResult.authorized) {
-          router.push(authResult.redirect);
-          return;
-        }
-
-        setAuthState({
-          loading: false,
-          authenticated: true,
-          authorized: true,
-          user: authResult.user,
-        });
-      }
-    });
-
-    return () => {
-      mounted = false;
-      subscription?.unsubscribe();
-    };
-  }, [router, requiredRole]);
-
-  // // แสดง loading state
-  // if (authState.loading) {
-  //   return (
-  //     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-  //       <div className="text-center">
-  //         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
-  //         <p className="mt-4 text-gray-600">กำลังตรวจสอบสิทธิ์...</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
-
-  // ถ้ายังไม่ authenticated หรือ authorized ให้แสดง loading
-  if (!authState.authenticated || !authState.authorized) {
+  // แสดงหน้า Loading ขณะรอข้อมูลจาก Context
+  if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">กำลังเปลี่ยนเส้นทาง...</p>
-        </div>
+        <Spin size="large" tip="กำลังโหลดข้อมูลผู้ใช้..." />
       </div>
     );
   }
 
+  // ป้องกันการ render เนื้อหา ถ้ายังไม่มีสิทธิ์ (ป้องกันการกระพริบ)
+  if (requiredRole && !requiredRole.includes(role)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Spin size="large" tip="ตรวจสอบสิทธิ์..." />
+      </div>
+    );
+  }
+
+  // --- โค้ดที่แก้ไข (หัวใจอยู่ตรงนี้) ---
+  // 2. เตรียม props สำหรับส่งให้ Sidebar จาก `userProfile` ที่ได้มา
+  const userName = userProfile?.full_name || "ผู้ใช้งาน";
+  let identifier = "บทบาท"; // ค่าเริ่มต้น
+
+  if (userProfile) { // เช็คให้แน่ใจว่า userProfile ไม่ใช่ null
+    switch (role) {
+      case 'student':
+        // *** ดึงรหัสนักศึกษาจาก `userProfile.student_identifier` ***
+        // ซึ่งเป็น property ที่ AuthContext ของคุณสร้างไว้ให้แล้ว
+        identifier = userProfile.student_identifier || "ไม่มีรหัส";
+        break;
+      case 'teacher':
+        identifier = "อาจารย์";
+        break;
+      case 'department_head':
+        identifier = "ผู้บริหารภาควิชา";
+        break;
+      case 'admin':
+        identifier = "ผู้ดูแลระบบ";
+        break;
+    }
+  }
+  // --- สิ้นสุดโค้ดที่แก้ไข ---
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Sidebar */}
-      <Sidebar userRole={authState.user?.role} />
+      <Sidebar
+        userRole={role}
+        userName={userName}
+        userIdentifier={identifier} // <-- ส่งค่าที่ถูกต้องเข้าไปแล้ว
+      />
 
-      {/* Main Content */}
       <div className="lg:ml-64">
-        {/* Header */}
-        <Header
-          title={title}
-          userRole={authState.user?.role}
-          userEmail={authState.user?.email}
-        />
-
-        {/* Page Content */}
-        <main className="p-6">{children}</main>
+        {/* Header ของคุณ (ถ้ามี) */}
+        {/* <Header title={title} user={user} /> */}
+        <main className="p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

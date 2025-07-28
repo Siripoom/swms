@@ -1,14 +1,15 @@
+// src/services/users.js
+
 import { supabase } from "@/config/supabase";
 
-// ดึงข้อมูลผู้ใช้ทั้งหมด
+// ดึงข้อมูลผู้ใช้ทั้งหมดผ่าน Edge Function
 export async function getAllUsers() {
   try {
-    const { data, error } = await supabase
-      .from("users")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data, error } = await supabase.functions.invoke("get-all-users");
 
     if (error) throw error;
+    if (data.error) throw new Error(data.error);
+
     return { success: true, data };
   } catch (error) {
     console.error("Error fetching users:", error);
@@ -16,27 +17,9 @@ export async function getAllUsers() {
   }
 }
 
-// ดึงข้อมูลผู้ใช้ตาม ID
-export async function getUserById(id) {
-  try {
-    const { data, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (error) throw error;
-    return { success: true, data };
-  } catch (error) {
-    console.error("Error fetching user:", error);
-    return { success: false, error: error.message };
-  }
-}
-
-// สร้างผู้ใช้ใหม่
+// สร้างผู้ใช้ใหม่ผ่าน Edge Function
 export async function createUser(userData) {
   try {
-    // ตรวจสอบว่า username และ email ไม่ซ้ำ
     const { data: existingUser } = await supabase
       .from("users")
       .select("username, email")
@@ -44,43 +27,17 @@ export async function createUser(userData) {
 
     if (existingUser && existingUser.length > 0) {
       const duplicateField =
-        existingUser[0].username === userData.username ? "username" : "email";
+        existingUser[0].username === userData.username ? "Username" : "Email";
       throw new Error(`${duplicateField} นี้มีอยู่ในระบบแล้ว`);
     }
 
-    // สร้าง user ใน Supabase Auth
-    const { data: authData, error: authError } =
-      await supabase.auth.admin.createUser({
-        email: userData.email,
-        password: userData.password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: userData.full_name,
-          username: userData.username,
-          role: userData.role,
-          department: userData.department,
-        },
-      });
-
-    if (authError) throw authError;
-
-    // เพิ่มข้อมูลใน users table
-    const { data, error } = await supabase
-      .from("users")
-      .insert([
-        {
-          id: authData.user.id,
-          username: userData.username,
-          full_name: userData.full_name,
-          email: userData.email,
-          role: userData.role,
-          department: userData.department || null,
-        },
-      ])
-      .select()
-      .single();
+    const { data, error } = await supabase.functions.invoke("create-user-profile", {
+      body: userData,
+    });
 
     if (error) throw error;
+    if (data.error) throw new Error(data.error);
+
     return { success: true, data };
   } catch (error) {
     console.error("Error creating user:", error);
@@ -88,85 +45,67 @@ export async function createUser(userData) {
   }
 }
 
-// อัปเดตข้อมูลผู้ใช้
+// === ส่วนที่แก้ไข ===
+// อัปเดตข้อมูลผู้ใช้ (ผ่าน Edge Function เพื่อแก้ไขได้ทั้ง Auth และ Profile)
 export async function updateUser(id, userData) {
   try {
-    // ตรวจสอบว่า username และ email ไม่ซ้ำ (ยกเว้นของตัวเอง)
-    if (userData.username || userData.email) {
-      const { data: existingUser } = await supabase
-        .from("users")
-        .select("username, email")
-        .neq("id", id)
-        .or(
-          `username.eq.${userData.username || ""},email.eq.${
-            userData.email || ""
-          }`
-        );
+    console.log(`[Client Service] Updating user ${id} with data:`, userData);
 
-      if (existingUser && existingUser.length > 0) {
-        const duplicateField =
-          existingUser[0].username === userData.username ? "username" : "email";
-        throw new Error(`${duplicateField} นี้มีอยู่ในระบบแล้ว`);
-      }
-    }
+    // เรียกใช้ Edge Function พร้อมส่งทั้ง ID และข้อมูลที่จะอัปเดต
+    const { data, error } = await supabase.functions.invoke("update-user-profile", {
+      body: {
+        userId: id,
+        ...userData // ส่งข้อมูลทั้งหมดที่ได้จากฟอร์ม
+      },
+    });
 
-    const { data, error } = await supabase
-      .from("users")
-      .update({
-        username: userData.username,
-        full_name: userData.full_name,
-        email: userData.email,
-        role: userData.role,
-        department: userData.department || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .select()
-      .single();
+    if (error) throw new Error(`Network/Invoke Error: ${error.message}`);
+    if (data && data.error) throw new Error(data.error);
 
-    if (error) throw error;
+    console.log("[Client Service] User updated successfully:", data);
     return { success: true, data };
+
   } catch (error) {
     console.error("Error updating user:", error);
     return { success: false, error: error.message };
   }
 }
 
-// ลบผู้ใช้
+// ลบผู้ใช้ผ่าน Edge Function
 export async function deleteUser(id) {
+  if (!id) {
+    const errorMessage = "ไม่สามารถลบผู้ใช้ได้: ไม่พบ User ID";
+    console.error(errorMessage);
+    return { success: false, error: errorMessage };
+  }
+
+  console.log(`[Client Service] กำลังส่งคำขอลบผู้ใช้ ID: ${id}`);
+
   try {
-    // ตรวจสอบว่าผู้ใช้ที่จะลบไม่ใช่ admin คนสุดท้าย
-    const { data: adminUsers } = await supabase
-      .from("users")
-      .select("id")
-      .eq("role", "admin");
+    const { data, error } = await supabase.functions.invoke("delete-user-profile", {
+      body: { userId: id },
+    });
 
-    if (adminUsers && adminUsers.length === 1 && adminUsers[0].id === id) {
-      throw new Error("ไม่สามารถลบผู้ดูแลระบบคนสุดท้ายได้");
+    if (error) {
+      console.error("[Client Service] เกิดข้อผิดพลาดระหว่างเรียก Edge Function:", error);
+      throw new Error(`การเชื่อมต่อล้มเหลว: ${error.message}`);
     }
 
-    // ลบข้อมูลจาก users table
-    const { error } = await supabase.from("users").delete().eq("id", id);
-
-    if (error) throw error;
-
-    // ลบ user จาก Supabase Auth (optional)
-    // Note: ต้องมี admin privileges หรือใช้ Supabase Admin API
-    try {
-      await supabase.auth.admin.deleteUser(id);
-    } catch (authError) {
-      console.warn("Could not delete user from auth:", authError);
-      // ไม่ throw error เพราะข้อมูลใน users table ลบแล้ว
+    if (data && data.error) {
+      console.error("[Client Service] Edge Function ตอบกลับพร้อมข้อผิดพลาด:", data.error);
+      throw new Error(data.error);
     }
 
-    return { success: true };
+    console.log("[Client Service] Edge Function ตอบกลับว่าลบสำเร็จ:", data?.message || 'Success');
+    return { success: true, data: data };
+
   } catch (error) {
-    console.error("Error deleting user:", error);
+    console.error("[Client Service] ข้อผิดพลาดสุดท้ายในการลบผู้ใช้:", error.message);
     return { success: false, error: error.message };
   }
 }
 
-// ดึงรายการ roles ที่มีอยู่
+// ฟังก์ชันเหล่านี้ไม่มีการเปลี่ยนแปลง
 export function getUserRoles() {
   return [
     { value: "admin", label: "ผู้ดูแลระบบ" },
@@ -176,7 +115,6 @@ export function getUserRoles() {
   ];
 }
 
-// ดึงรายการแผนก/สาขา
 export function getDepartments() {
   return [
     { value: "nursing", label: "พยาบาลศาสตร์" },

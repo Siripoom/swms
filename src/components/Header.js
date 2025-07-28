@@ -2,10 +2,19 @@
 
 import { useState, useEffect } from "react";
 import { Bell, Search, User, ChevronDown } from "lucide-react";
-
+import { logout } from "@/services/auth";
 export default function Header({ title, userRole }) {
   const [currentTime, setCurrentTime] = useState("");
   const [showUserMenu, setShowUserMenu] = useState(false);
+
+  const handleLogout = async () => {
+    const result = await logout();
+    if (result.success) {
+      router.push("/"); // เปลี่ยนเป็น "/" หรือหน้าแรกตามที่คุณต้องการ
+    } else {
+      alert("เกิดข้อผิดพลาดในการออกจากระบบ: " + result.error);
+    }
+  };
 
   useEffect(() => {
     const updateTime = () => {
@@ -50,7 +59,7 @@ export default function Header({ title, userRole }) {
         </div>
 
         {/* Center Section - Search (สำหรับอนาคต) */}
-        <div className="hidden md:flex flex-1 max-w-lg mx-8">
+        {/* <div className="hidden md:flex flex-1 max-w-lg mx-8">
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
@@ -60,7 +69,7 @@ export default function Header({ title, userRole }) {
               disabled
             />
           </div>
-        </div>
+        </div> */}
 
         {/* Right Section - Time, Notifications, User Menu */}
         <div className="flex items-center space-x-4">
@@ -70,10 +79,10 @@ export default function Header({ title, userRole }) {
           </div>
 
           {/* Notifications */}
-          <button className="relative p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
+          {/* <button className="relative p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
             <Bell size={20} />
             <span className="absolute top-1 right-1 w-3 h-3 bg-red-500 rounded-full"></span>
-          </button>
+          </button> */}
 
           {/* User Menu */}
           <div className="relative">
@@ -94,25 +103,25 @@ export default function Header({ title, userRole }) {
             {/* Dropdown Menu */}
             {showUserMenu && (
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                <a
+                {/* <a
                   href="#"
                   className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                 >
                   โปรไฟล์
-                </a>
-                <a
+                </a> */}
+                {/* <a
                   href="#"
                   className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                 >
                   ตั้งค่า
-                </a>
+                </a> */}
                 <hr className="my-1" />
-                <a
-                  href="#"
-                  className="block px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                <button
+                  onClick={handleLogout}
+                  className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
                 >
                   ออกจากระบบ
-                </a>
+                </button>
               </div>
             )}
           </div>
