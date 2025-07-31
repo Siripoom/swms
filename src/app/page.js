@@ -9,7 +9,6 @@ import {
   Button,
   Card,
   Typography,
-  Space,
   message,
   Checkbox,
 } from "antd";
@@ -19,6 +18,7 @@ import {
   EyeInvisibleOutlined,
   EyeTwoTone,
 } from "@ant-design/icons";
+import myLogo from "@/assets/logo.png";
 
 const { Title, Text } = Typography;
 
@@ -27,7 +27,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  // ตรวจสอบ session ที่มีอยู่แล้ว
   useEffect(() => {
     const checkExistingSession = async () => {
       try {
@@ -36,7 +35,7 @@ export default function LoginPage() {
         } = await supabase.auth.getSession();
 
         if (session) {
-          // ถ้ามี session อยู่แล้ว ให้ redirect ตาม role
+          // Redirect ตาม role ถ้ามี session
           await redirectUserByRole(session.user.id);
         }
       } catch (error) {
@@ -45,82 +44,79 @@ export default function LoginPage() {
     };
 
     checkExistingSession();
-  }, []);
+  }, []); // [] เพื่อเช็คครั้งแรกเท่านั้น
 
+  // แก้ไขให้ return boolean และ await router.push
   const redirectUserByRole = async (userId) => {
     try {
-      // ดึงข้อมูล role จากฐานข้อมูล
       const { data: userData, error } = await supabase
         .from("users")
         .select("role")
         .eq("id", userId)
         .single();
 
-      if (error) {
+      if (error || !userData) {
         console.error("Error fetching user role:", error);
         message.error("ไม่สามารถดึงข้อมูลบทบาทผู้ใช้ได้");
-        return;
+        return false;
       }
 
-      const role = userData?.role;
+      const role = userData.role;
 
-      // เก็บ role ใน localStorage
-      localStorage.setItem("userRole", role);
+      // แนะนำไม่ต้องเก็บ localStorage ตรงนี้
+      // localStorage.setItem("userRole", role);
 
-      // Redirect ตาม role
       switch (role) {
         case "admin":
-          router.push("/admin/dashboard");
+          await router.push("/admin/dashboard");
           break;
         case "department_head":
-          router.push("/department/dashboard");
+          await router.push("/department/dashboard");
           break;
         case "teacher":
-          router.push("/teacher/dashboard");
+          await router.push("/teacher/dashboard");
           break;
         case "student":
-          router.push("/student/dashboard");
+          await router.push("/student/dashboard");
           break;
         default:
           message.error("บทบาทผู้ใช้ไม่ถูกต้อง");
           await supabase.auth.signOut();
-          localStorage.removeItem("userRole");
+          // localStorage.removeItem("userRole");
+          return false;
       }
+
+      return true;
     } catch (error) {
       console.error("Error in redirectUserByRole:", error);
       message.error("เกิดข้อผิดพลาดในการเข้าสู่ระบบ");
+      return false;
     }
   };
 
   const onFinish = async (values) => {
     setLoading(true);
-
     try {
-      // ลองเข้าสู่ระบบด้วย Supabase
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: values.username, // สมมติว่าใช้ email เป็น username
+        email: values.username,
         password: values.password,
       });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       if (data.user) {
         message.success("เข้าสู่ระบบสำเร็จ!");
 
-        // จดจำการเข้าสู่ระบบถ้าเลือกไว้
         if (values.remember) {
           localStorage.setItem("rememberLogin", "true");
+        } else {
+          localStorage.removeItem("rememberLogin");
         }
 
-        // Redirect ตาม role
         await redirectUserByRole(data.user.id);
       }
     } catch (error) {
       console.error("Login error:", error);
-
-      // แสดงข้อความผิดพลาดตาม error type
       if (error.message === "Invalid login credentials") {
         message.error("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
       } else if (error.message === "Email not confirmed") {
@@ -138,21 +134,25 @@ export default function LoginPage() {
     message.error("กรุณากรอกข้อมูลให้ครบถ้วน");
   };
 
+  // ตัวอย่าง UI ลืมรหัสผ่าน แบบง่าย ๆ (เชื่อมไปหน้าลืมรหัสผ่าน)
+  const handleForgotPassword = () => {
+    router.push("/forgot-password");
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <Card
-          className="shadow-xl border-0 rounded-2xl overflow-hidden"
-          styles={{ body: { padding: 0 } }} // ✅ ใช้ styles.body แทน
-        >
-
-          {/* Header Section */}
+        <Card className="shadow-xl border-0 rounded-2xl overflow-hidden" bodyStyle={{ padding: 0 }}>
           <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-12 text-center text-white">
             <div className="mb-4">
-              <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <UserOutlined className="text-3xl text-white" />
+              <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4 p-1">
+                <img
+                  src={myLogo.src} // <-- แก้ไขโดยการเพิ่ม .src ต่อท้าย
+                  alt="โลโก้ระบบ"
+                  className="w-full h-full object-contain rounded-full"
+                />
               </div>
-              <Title level={2} className="text-white mb-2 !text-white">
+              <Title level={2} className="!text-white mb-2">
                 ระบบจัดการภาระงานนักศึกษา
               </Title>
               <Text className="text-blue-100 text-sm">
@@ -161,7 +161,6 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Form Section */}
           <div className="px-8 py-8">
             <div className="text-center mb-6">
               <Title level={3} className="text-gray-800 mb-2">
@@ -215,13 +214,11 @@ export default function LoginPage() {
               <Form.Item>
                 <div className="flex items-center justify-between">
                   <Form.Item name="remember" valuePropName="checked" noStyle>
-                    <Checkbox className="text-sm text-gray-600">
-                      จดจำการเข้าสู่ระบบ
-                    </Checkbox>
+                    <Checkbox className="text-sm text-gray-600">จดจำการเข้าสู่ระบบ</Checkbox>
                   </Form.Item>
-                  {/* <Button type="link" className="p-0 text-sm">
+                  <Button type="link" className="p-0 text-sm" onClick={handleForgotPassword}>
                     ลืมรหัสผ่าน?
-                  </Button> */}
+                  </Button>
                 </div>
               </Form.Item>
 
@@ -238,25 +235,24 @@ export default function LoginPage() {
                 </Button>
               </Form.Item>
 
-              {/* <div className="text-center text-sm text-gray-500 mt-6">
+              <div className="text-center text-sm text-gray-500 mt-6">
                 <Text>
                   ต้องการความช่วยเหลือ?{" "}
                   <Button type="link" className="p-0 text-sm">
                     ติดต่อผู้ดูแลระบบ
                   </Button>
                 </Text>
-              </div> */}
+              </div>
             </Form>
           </div>
         </Card>
 
-        {/* Footer */}
         <div className="text-center mt-8 text-gray-500 text-sm">
-          <Text>
-            © 2025 ระบบจัดการภาระงานนักศึกษา วิทยาลัยพยาบาลบรมราชชนนี ชัยนาท
-          </Text>
+          <Text>© 2025 ระบบจัดการภาระงานนักศึกษา วิทยาลัยพยาบาลบรมราชชนนี ชัยนาท</Text>
           <br />
           <Text className="text-xs">พัฒนาโดย สิริภูมิ อาทรสิริรัตน์</Text>
+          <br />
+          <Text className="text-xs">อ.ประกาศิต พูลวงษ์ และ อ.ฮิโรชิเกะ นาราฮารา</Text>
         </div>
       </div>
     </div>

@@ -15,6 +15,8 @@
     "@supabase/supabase-js": "^2.50.3",
     "antd": "^5.26.3",
     "apexcharts": "^5.2.0",
+    "jspdf": "^3.0.1",
+    "jspdf-autotable": "^5.0.2",
     "lucide-react": "^0.525.0",
     "next": "15.3.4",
     "papaparse": "^5.5.3",
