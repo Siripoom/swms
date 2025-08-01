@@ -1,16 +1,16 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import { getMyWorkloadReport } from "@/services/workloads";
 import { getDistinctAcademicYears } from "@/services/subjects";
-import { Table, Card, Typography, Spin, Select, Row, Col, message, Empty, Button } from "antd";
+import { Table, Card, Typography, Spin, Select, Row, Col, message, Empty, Button, Divider } from "antd";
 import { BarChartOutlined, DownloadOutlined } from "@ant-design/icons";
 import dayjs from 'dayjs';
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable'
-import '@/lib/fonts/THSarabunNew-normal.js'; // **ตรวจสอบ Path และชื่อไฟล์ Font ให้ถูกต้อง**
+import autoTable from 'jspdf-autotable';
+import '@/lib/fonts/THSarabunNew-normal.js';
 
 const { Title, Text } = Typography;
 
@@ -69,17 +69,43 @@ export default function MyReportPage() {
     if (reportData) {
       reportData.forEach(item => { if (item.category in summary) summary[item.category] += item.hours_spent; });
     }
-    return Object.keys(categoryTranslations).map(key => ({
+
+    const data = Object.keys(categoryTranslations).map(key => ({
       key: key,
       category: categoryTranslations[key],
       hours: summary[key] || 0
     }));
+
+    const totalHours = data.reduce((sum, item) => sum + item.hours, 0);
+
+    data.push({
+      key: 'total',
+      category: 'รวมทั้งหมด',
+      hours: totalHours,
+      isTotal: true
+    });
+
+    return data;
   }, [reportData]);
 
   const summaryColumns = [
-    { title: 'พันธกิจ', dataIndex: 'category', key: 'category' },
-    { title: 'ชั่วโมงรวม', dataIndex: 'hours', key: 'hours', render: (h) => h.toFixed(2) },
-    { title: 'เฉลี่ย (ชม./สัปดาห์)', key: 'avg', render: (_, record) => (record.hours / 16).toFixed(2) },
+    {
+      title: 'พันธกิจ',
+      dataIndex: 'category',
+      key: 'category',
+      render: (text, record) => record.isTotal ? <Text strong>{text}</Text> : text
+    },
+    {
+      title: 'ชั่วโมงรวม',
+      dataIndex: 'hours',
+      key: 'hours',
+      render: (h, record) => record.isTotal ? <Text strong>{(h || 0).toFixed(2)}</Text> : (h || 0).toFixed(2)
+    },
+    {
+      title: 'เฉลี่ย (ชม./สัปดาห์)',
+      key: 'avg',
+      render: (_, record) => record.isTotal ? <Text strong>{((record.hours || 0) / 16).toFixed(2)}</Text> : ((record.hours || 0) / 16).toFixed(2)
+    },
   ];
 
   const detailColumns = [
@@ -89,32 +115,26 @@ export default function MyReportPage() {
     { title: 'ชั่วโมง', dataIndex: 'hours_spent', key: 'hours_spent', align: 'right', render: (val) => val.toFixed(1) },
   ];
 
-  // --- จุดที่แก้ไข: ย้ายฟังก์ชันเข้ามาข้างใน Component ---
+  // --- *** จุดที่แก้ไข: ฟังก์ชัน handleDownloadPDF *** ---
   const handleDownloadPDF = () => {
-    // 1. ตรวจสอบว่ามีข้อมูลหรือไม่
     if (!reportData || reportData.length === 0) {
       message.warning("ไม่มีข้อมูลสำหรับสร้าง PDF");
       return;
     }
 
-    // 2. สร้าง instance ของ jsPDF
     const doc = new jsPDF();
-
-    // 3. ตั้งค่า Font ภาษาไทย (ตรวจสอบให้แน่ใจว่าชื่อ 'THSarabunNew' ตรงกับในไฟล์ font)
     doc.setFont('THSarabunNew', 'normal');
 
-    // 4. สร้าง Header ของเอกสาร
+    // ส่วน Header ของเอกสาร (เหมือนเดิม)
     doc.setFontSize(18);
     doc.text("รายงานสรุปภาระงานนักศึกษา", 105, 22, { align: 'center' });
     doc.setFontSize(11);
     doc.text(`ชื่อ-สกุล: ${userProfile?.full_name || 'N/A'}`, 14, 32);
     doc.text(`รหัสนักศึกษา: ${userProfile?.student_identifier || 'N/A'}`, 14, 38);
-
-    // แสดงภาคการศึกษาให้สวยงามขึ้น
-    const semesterText = semesterOptions.find(s => s.value === selectedSemester)?.label || 'ทั้งหมด';
+    const semesterText = selectedSemester ? semesterOptions.find(s => s.value === selectedSemester)?.label : 'ทั้งหมด';
     doc.text(`ปีการศึกษา: ${selectedYear} / ภาคการศึกษา: ${semesterText}`, 14, 44);
 
-    // 5. สร้างตารางสรุป
+    // สร้างตารางสรุป (เหมือนเดิม)
     doc.setFontSize(14);
     doc.text("สรุปภาระงานรายพันธกิจ", 14, 58);
     autoTable(doc, {
@@ -126,37 +146,32 @@ export default function MyReportPage() {
         (item.hours / 16).toFixed(2)
       ]),
       theme: 'grid',
-      headStyles: { font: 'THSarabunNew', fontStyle: 'normal' },
+      headStyles: { font: 'THSarabunNew', fontStyle: 'normal', fillColor: [220, 220, 220], textColor: [0, 0, 0] },
       bodyStyles: { font: 'THSarabunNew', fontStyle: 'normal' },
+      didParseCell: function (data) {
+        const raw = data.row.raw;
+        if (raw && raw.isTotal) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = '#f0f0f0';
+        }
+      }
     });
 
-    // 6. สร้างตารางรายละเอียด
-    let finalY = doc.lastAutoTable.finalY; // หาตำแหน่งท้ายตารางล่าสุด
-    doc.setFontSize(14);
-    doc.text("รายละเอียดภาระงานทั้งหมด", 14, finalY + 12);
-    autoTable(doc, {
-      startY: finalY + 16,
-      head: [['กิจกรรม/ภาระงาน', 'หมวดหมู่', 'วันที่', 'ชั่วโมง']],
-      body: reportData.map(item => [
-        item.work_name || '-',
-        categoryTranslations[item.category] || item.category,
-        item.work_date ? dayjs(item.work_date).format('DD/MM/YYYY') : '-',
-        (item.hours_spent || 0).toFixed(1)
-      ]),
-      theme: 'grid',
-      headStyles: { font: 'THSarabunNew', fontStyle: 'normal' },
-      bodyStyles: { font: 'THSarabunNew', fontStyle: 'normal' },
-    });
+    // --- **ลบส่วนที่สร้างตารางรายละเอียดออกไปทั้งหมด** ---
 
-    // 7. เพิ่มส่วนท้ายสำหรับเซ็นชื่อ
-    finalY = doc.lastAutoTable.finalY;
+    // หาตำแหน่งท้ายตารางล่าสุด
+    let finalY = doc.lastAutoTable.finalY;
+
+    // เพิ่มส่วนท้ายสำหรับเซ็นชื่อ (ปรับตำแหน่งให้เหมาะสม)
     doc.setFontSize(11);
-    doc.text("ลงชื่อ................................................................. อาจารย์ที่ปรึกษา", 150, finalY + 25, { align: 'center' });
-    doc.text("(.................................................................)", 150, finalY + 32, { align: 'center' });
-    doc.text("วันที่............/............/............", 150, finalY + 39, { align: 'center' });
+    // เพิ่มระยะห่างจากตารางให้มากขึ้น
+    const signatureY = finalY + 30;
+    doc.text("ลงชื่อ................................................................อาจารย์ที่ปรึกษา", 156, signatureY, { align: 'center' });
+    doc.text("(.................................................................)", 150, signatureY + 7, { align: 'center' });
+    doc.text("วันที่............/............/............", 150, signatureY + 14, { align: 'center' });
 
-    // 8. บันทึกไฟล์
-    const fileName = `Workload_Report_${userProfile?.student_identifier || 'student'}_${selectedYear}.pdf`;
+    // บันทึกไฟล์
+    const fileName = `Workload_Summary_${userProfile?.student_identifier || 'student'}_${selectedYear}.pdf`;
     doc.save(fileName);
   };
 
@@ -172,13 +187,12 @@ export default function MyReportPage() {
               <Title level={2} className="!mb-1 flex items-center gap-3"><BarChartOutlined />รายงานของฉัน</Title>
               <Text type="secondary">สรุปและรายละเอียดภาระงานของคุณในแต่ละภาคการศึกษา</Text>
             </div>
-            {/* ย้ายปุ่มมาไว้ตรงนี้เพื่อให้เห็นชัดเจนขึ้น */}
             <Button
               type="primary"
               icon={<DownloadOutlined />}
               size="large"
               onClick={handleDownloadPDF}
-              disabled={reportData.length === 0 || loading}
+              disabled={!reportData || reportData.length === 0 || loading}
             >
               Download PDF
             </Button>

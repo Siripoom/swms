@@ -216,9 +216,9 @@ export default function LoginPage() {
                   <Form.Item name="remember" valuePropName="checked" noStyle>
                     <Checkbox className="text-sm text-gray-600">จดจำการเข้าสู่ระบบ</Checkbox>
                   </Form.Item>
-                  <Button type="link" className="p-0 text-sm" onClick={handleForgotPassword}>
+                  {/* <Button type="link" className="p-0 text-sm" onClick={handleForgotPassword}>
                     ลืมรหัสผ่าน?
-                  </Button>
+                  </Button> */}
                 </div>
               </Form.Item>
 
@@ -235,14 +235,14 @@ export default function LoginPage() {
                 </Button>
               </Form.Item>
 
-              <div className="text-center text-sm text-gray-500 mt-6">
+              {/* <div className="text-center text-sm text-gray-500 mt-6">
                 <Text>
                   ต้องการความช่วยเหลือ?{" "}
                   <Button type="link" className="p-0 text-sm">
                     ติดต่อผู้ดูแลระบบ
                   </Button>
                 </Text>
-              </div>
+              </div> */}
             </Form>
           </div>
         </Card>
