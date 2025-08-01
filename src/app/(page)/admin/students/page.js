@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import {
   getAllStudents,
@@ -9,38 +9,18 @@ import {
   createStudent,
   updateStudent,
   deleteStudent,
-} from "@/services/students"; // **ตรวจสอบ Path ให้ถูกต้อง**
+  updateStudentAdvisors
+} from "@/services/students";
 import {
-  Table,
-  Button,
-  Modal,
-  Form,
-  Input,
-  Select,
-  Space,
-  Card,
-  Typography,
-  Row,
-  Col,
-  Tag,
-  Avatar,
-  Popconfirm,
-  message,
-  Tooltip,
-  InputNumber,
+  Table, Button, Modal, Form, Input, Select, Space, Typography, Row, Col, Tag, Avatar, Popconfirm, message, Tooltip, InputNumber, Grid, Empty, Spin
 } from "antd";
 import {
-  UserOutlined,
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  SearchOutlined,
-  SolutionOutlined,
-  TeamOutlined,
+  UserOutlined, PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, SolutionOutlined
 } from "@ant-design/icons";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
+const { useBreakpoint } = Grid;
 
 export default function AdminStudentsPage() {
   const [students, setStudents] = useState([]);
@@ -48,14 +28,14 @@ export default function AdminStudentsPage() {
   const [unlinkedUsers, setUnlinkedUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState("create"); // 'create' or 'edit'
+  const [modalMode, setModalMode] = useState("create");
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [form] = Form.useForm();
+  const screens = useBreakpoint();
 
-  // ดึงข้อมูลทั้งหมด
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [studentsRes, teachersRes, unlinkedUsersRes] = await Promise.all([
@@ -72,49 +52,40 @@ export default function AdminStudentsPage() {
 
       if (unlinkedUsersRes.success) setUnlinkedUsers(unlinkedUsersRes.data);
       else message.error("ไม่สามารถดึงข้อมูลผู้ใช้ได้: " + unlinkedUsersRes.error);
-
     } catch (error) {
       message.error("เกิดข้อผิดพลาดในการดึงข้อมูลหลัก");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
-  const filteredStudents = students.filter((student) => {
+  const filteredStudents = useMemo(() => students.filter((student) => {
     const studentName = student.user?.full_name || "";
     const studentId = student.student_id || "";
     return (
       studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       studentId.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  });
+  }), [students, searchTerm]);
 
   const openModal = (mode, student = null) => {
     form.resetFields();
     setModalMode(mode);
     setSelectedStudent(student);
-
     if (mode === 'edit' && student) {
       form.setFieldsValue({
-        student_id: student.student_id,
-        year_level: student.year_level,
-        academic_year: student.academic_year,
-        advisor_id: student.advisor?.id,
-        // user_id and full_name are for display only in edit mode
+        ...student,
+        advisor_ids: student.advisor_list?.map(a => a.id) || []
       });
     }
-
-    // Fetch latest unlinked users when opening create modal
     if (mode === 'create') {
-      getUnlinkedStudentUsers().then(res => {
-        if (res.success) setUnlinkedUsers(res.data);
-      });
+      // Re-fetch unlinked users every time to get the latest list
+      getUnlinkedStudentUsers().then(res => { if (res.success) setUnlinkedUsers(res.data); });
     }
-
     setIsModalOpen(true);
   };
 
@@ -125,22 +96,30 @@ export default function AdminStudentsPage() {
 
   const handleSubmit = async (values) => {
     setFormLoading(true);
+    const { advisor_ids, ...studentData } = values;
+
     try {
-      let result;
+      let studentResult;
       if (modalMode === 'create') {
-        result = await createStudent(values);
+        studentResult = await createStudent(studentData);
       } else {
-        // Exclude user_id from update data as it should not be changed
-        const { user_id, ...updateData } = values;
-        result = await updateStudent(selectedStudent.id, updateData);
+        const { user_id, ...updateData } = studentData;
+        studentResult = await updateStudent(selectedStudent.id, updateData);
       }
 
-      if (result.success) {
-        message.success(modalMode === 'create' ? "เพิ่มนักศึกษาสำเร็จ" : "แก้ไขข้อมูลสำเร็จ");
-        fetchData();
-        closeModal();
+      if (studentResult.success && studentResult.data?.[0]?.id) {
+        const studentId = studentResult.data[0].id;
+        const advisorResult = await updateStudentAdvisors(studentId, advisor_ids || []);
+
+        if (advisorResult.success) {
+          message.success("บันทึกข้อมูลสำเร็จ");
+          await fetchData();
+          closeModal();
+        } else {
+          message.warn("บันทึกข้อมูลนักศึกษาสำเร็จ แต่เกิดข้อผิดพลาดในการกำหนดอาจารย์ที่ปรึกษา");
+        }
       } else {
-        message.error("เกิดข้อผิดพลาด: " + result.error);
+        message.error("เกิดข้อผิดพลาดในการบันทึกข้อมูลนักศึกษา: " + (studentResult.error || "Unknown Error"));
       }
     } catch (error) {
       message.error("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
@@ -154,7 +133,7 @@ export default function AdminStudentsPage() {
       const result = await deleteStudent(studentId);
       if (result.success) {
         message.success("ลบข้อมูลนักศึกษาสำเร็จ");
-        fetchData();
+        await fetchData();
       } else {
         message.error("เกิดข้อผิดพลาดในการลบ: " + result.error);
       }
@@ -164,183 +143,136 @@ export default function AdminStudentsPage() {
   };
 
   const columns = [
-    {
-      title: "รหัสนักศึกษา",
-      dataIndex: "student_id",
-      key: "student_id",
-      sorter: (a, b) => a.student_id.localeCompare(b.student_id),
-    },
-    {
-      title: "ชื่อ-นามสกุล",
-      key: "full_name",
-      render: (_, record) => (
-        <Space>
-          <Avatar icon={<UserOutlined />} />
-          <Text>{record.user?.full_name || 'N/A'}</Text>
-        </Space>
-      ),
-    },
-    {
-      title: "ชั้นปี",
-      dataIndex: "year_level",
-      key: "year_level",
-      filters: [
-        { text: 'ปี 1', value: 1 },
-        { text: 'ปี 2', value: 2 },
-        { text: 'ปี 3', value: 3 },
-        { text: 'ปี 4', value: 4 },
-      ],
-      onFilter: (value, record) => record.year_level === value,
-      render: (year) => <Tag color="blue">ปี {year}</Tag>,
-    },
+    { title: "รหัสนักศึกษา", dataIndex: "student_id", key: "student_id", sorter: (a, b) => a.student_id.localeCompare(b.student_id), render: (text) => <Tag color="cyan">{text}</Tag> },
+    { title: "ชื่อ-นามสกุล", key: "full_name", render: (_, record) => (<Space><Avatar src={record.user?.profile_image_url} icon={<UserOutlined />} /><Text>{record.user?.full_name || 'N/A'}</Text></Space>) },
+    { title: "ชั้นปี", dataIndex: "year_level", key: "year_level", responsive: ['sm'], render: (year) => <Tag color="blue">ปี {year}</Tag> },
     {
       title: "อาจารย์ที่ปรึกษา",
-      key: "advisor",
-      render: (_, record) => record.advisor?.full_name || <Text type="secondary">ยังไม่ระบุ</Text>,
+      dataIndex: "advisor_list",
+      key: "advisors",
+      responsive: ['md'],
+      render: (advisors) => (
+        <Space direction="vertical" size={2}>
+          {advisors?.length > 0
+            ? advisors.map(a => <Text key={a.id} style={{ fontSize: 12 }}>{a.full_name}</Text>)
+            : <Text type="secondary" italic>ยังไม่มี</Text>
+          }
+        </Space>
+      )
     },
     {
-      title: "การดำเนินการ",
-      key: "actions",
+      title: "ดำเนินการ", key: "actions", align: 'center', width: 120,
       render: (_, record) => (
         <Space>
-          <Tooltip title="แก้ไข">
-            <Button icon={<EditOutlined />} onClick={() => openModal('edit', record)} />
-          </Tooltip>
-          <Popconfirm
-            title="ลบข้อมูลนักศึกษา?"
-            description={`คุณแน่ใจหรือไม่ที่จะลบข้อมูลของ "${record.user?.full_name}"?`}
-            onConfirm={() => handleDelete(record.id)}
-            okText="ใช่"
-            cancelText="ไม่"
-          >
-            <Button danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          <Tooltip title="แก้ไข"><Button shape="circle" icon={<EditOutlined />} onClick={() => openModal('edit', record)} /></Tooltip>
+          <Tooltip title="ลบ"><Popconfirm title="ลบข้อมูลนักศึกษา?" description={`คุณแน่ใจหรือไม่ที่จะลบข้อมูลของ "${record.user?.full_name}"?`} onConfirm={() => handleDelete(record.id)} okText="ยืนยัน" cancelText="ยกเลิก"> <Button danger shape="circle" icon={<DeleteOutlined />} /> </Popconfirm></Tooltip>
         </Space>
-      ),
+      )
     },
   ];
 
   return (
-    <DashboardLayout title="จัดการนักศึกษา" requiredRole={["admin"]}>
-      <div style={{ padding: "24px" }}>
-        <Card style={{ marginBottom: "24px" }}>
-          <Row justify="space-between" align="middle">
-            <Col>
-              <Space>
-                <SolutionOutlined style={{ fontSize: "24px", color: "#1890ff" }} />
-                <div>
-                  <Title level={2} style={{ margin: 0 }}>จัดการนักศึกษา</Title>
-                  <Text type="secondary">เพิ่ม แก้ไข และจัดการข้อมูลนักศึกษาในระบบ</Text>
-                </div>
-              </Space>
-            </Col>
-            <Col>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal('create')} size="large">
-                เพิ่มนักศึกษาใหม่
-              </Button>
-            </Col>
-          </Row>
-        </Card>
+    <DashboardLayout title="จัดการนักศึกษา">
+      <div className="bg-white min-h-screen p-4 sm:p-6 lg:p-8">
+        <div className="max-w-7xl mx-auto space-y-6">
 
-        <Card>
+          <div className="flex flex-wrap justify-between items-center gap-4">
+            <div>
+              <Title level={2} className="!mb-1 flex items-center gap-3"><SolutionOutlined />จัดการนักศึกษา</Title>
+              <Text type="secondary">เพิ่ม แก้ไข และจัดการข้อมูลนักศึกษาทั้งหมดในระบบ</Text>
+            </div>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal('create')} size="large">
+              {screens.sm ? 'เพิ่มนักศึกษาใหม่' : ''}
+            </Button>
+          </div>
+
           <Input
             placeholder="ค้นหารหัสนักศึกษา หรือ ชื่อ-นามสกุล..."
             prefix={<SearchOutlined />}
-            value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            size="large"
             allowClear
-            style={{ marginBottom: 16, maxWidth: 400 }}
           />
-          <Table
-            columns={columns}
-            dataSource={filteredStudents}
-            rowKey="id"
-            loading={loading}
-            pagination={{ pageSize: 10 }}
-          />
-        </Card>
 
-        <Modal
-          title={modalMode === "create" ? "เพิ่มนักศึกษาใหม่" : "แก้ไขข้อมูลนักศึกษา"}
-          open={isModalOpen}
-          onCancel={closeModal}
-          onOk={() => form.submit()}
-          confirmLoading={formLoading}
-          okText="บันทึก"
-          cancelText="ยกเลิก"
-        >
-          <Form form={form} layout="vertical" onFinish={handleSubmit}>
+          <div className="shadow-md rounded-lg overflow-hidden border border-gray-200">
+            <Table
+              columns={columns}
+              dataSource={filteredStudents}
+              rowKey="id"
+              loading={loading}
+              pagination={{ pageSize: 10, showSizeChanger: true }}
+              scroll={{ x: 'max-content' }}
+              locale={{ emptyText: <Empty description="ไม่พบข้อมูลนักศึกษา" /> }}
+            />
+          </div>
+
+        </div>
+      </div>
+
+      <Modal
+        title={
+          <div className="flex items-center">
+            {modalMode === 'create' ? <PlusOutlined /> : <EditOutlined />}
+            <span className="ml-2">{modalMode === "create" ? "เพิ่มนักศึกษาใหม่" : "แก้ไขข้อมูลนักศึกษา"}</span>
+          </div>
+        }
+        open={isModalOpen}
+        onCancel={closeModal}
+        footer={[
+          <Button key="back" onClick={closeModal}>ยกเลิก</Button>,
+          <Button key="submit" type="primary" loading={formLoading} onClick={() => form.submit()}>บันทึก</Button>
+        ]}
+        width={screens.lg ? 800 : 'auto'}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-6">
+          <Spin spinning={formLoading && modalMode === 'create'}>
             {modalMode === 'create' ? (
-              <Form.Item
-                name="user_id"
-                label="เลือกผู้ใช้ (นักศึกษา)"
-                rules={[{ required: true, message: "กรุณาเลือกผู้ใช้" }]}
-              >
+              <Form.Item name="user_id" label="เลือกผู้ใช้ (นักศึกษา)" rules={[{ required: true, message: "กรุณาเลือกผู้ใช้" }]}>
                 <Select
                   showSearch
-                  placeholder="ค้นหาชื่อผู้ใช้..."
-                  optionFilterProp="children"
-                  filterOption={(input, option) =>
-                    (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                  }
-                  options={unlinkedUsers.map(u => ({ value: u.id, label: u.full_name }))}
+                  placeholder="ค้นหาชื่อหรืออีเมลผู้ใช้..."
+                  optionFilterProp="label"
+                  options={unlinkedUsers.map(u => ({ value: u.id, label: `${u.full_name} (${u.email})` }))}
+                  loading={unlinkedUsers.length === 0 && isModalOpen}
                 />
               </Form.Item>
             ) : (
-              <Form.Item label="ชื่อ-นามสกุล">
-                <Input value={selectedStudent?.user?.full_name} disabled />
-              </Form.Item>
+              <Form.Item label="ชื่อ-นามสกุล"><Input value={selectedStudent?.user?.full_name} disabled /></Form.Item>
             )}
+          </Spin>
 
-            <Form.Item
-              name="student_id"
-              label="รหัสนักศึกษา"
-              rules={[{ required: true, message: "กรุณากรอกรหัสนักศึกษา" }]}
-            >
-              <Input placeholder="เช่น 6612345678" />
-            </Form.Item>
+          <Form.Item name="student_id" label="รหัสนักศึกษา" rules={[{ required: true, message: "กรุณากรอกรหัสนักศึกษา" }]}>
+            <Input placeholder="เช่น 6612345678" />
+          </Form.Item>
 
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  name="year_level"
-                  label="ชั้นปี"
-                  rules={[{ required: true, message: "กรุณาเลือกชั้นปี" }]}
-                >
-                  <Select placeholder="เลือกชั้นปี">
-                    <Option value={1}>ปี 1</Option>
-                    <Option value={2}>ปี 2</Option>
-                    <Option value={3}>ปี 3</Option>
-                    <Option value={4}>ปี 4</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="academic_year"
-                  label="ปีการศึกษาที่เข้า"
-                  rules={[{ required: true, message: "กรุณากรอกปีการศึกษา" }]}
-                >
-                  <InputNumber placeholder="เช่น 2566" style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-            </Row>
+          <Row gutter={24}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="year_level" label="ชั้นปี" rules={[{ required: true }]}>
+                <Select placeholder="เลือกชั้นปี">
+                  {[1, 2, 3, 4].map(year => <Option key={year} value={year}>ปี {year}</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="academic_year" label="ปีการศึกษาที่เข้า" rules={[{ required: true }]}>
+                <InputNumber placeholder="เช่น 2566" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
 
-            <Form.Item name="advisor_id" label="อาจารย์ที่ปรึกษา">
-              <Select
-                showSearch
-                placeholder="เลือกอาจารย์ที่ปรึกษา"
-                optionFilterProp="children"
-                allowClear
-                filterOption={(input, option) =>
-                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                }
-                options={teachers.map(t => ({ value: t.id, label: t.full_name }))}
-              />
-            </Form.Item>
-          </Form>
-        </Modal>
-      </div>
+          <Form.Item name="advisor_ids" label="อาจารย์ที่ปรึกษา">
+            <Select
+              mode="multiple"
+              showSearch
+              placeholder="เลือกอาจารย์ที่ปรึกษา..."
+              allowClear
+              options={teachers.map(t => ({ value: t.id, label: t.full_name }))}
+              optionFilterProp="label"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </DashboardLayout>
   );
 }

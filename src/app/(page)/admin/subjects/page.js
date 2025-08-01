@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react"; // 1. เพิ่ม useCallback
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import {
@@ -9,7 +9,7 @@ import {
 } from "@/services/subjects";
 import { getInstructors } from "@/services/students";
 import {
-  Table, Button, Modal, Form, Input, Select, Space, Typography, Row, Col, Popconfirm, message, Tooltip, InputNumber, Transfer, Spin, Tag, Grid, Empty
+  Table, Button, Modal, Form, Input, Select, Space, Typography, Row, Col, Popconfirm, message, Tooltip, InputNumber, Transfer, Spin, Tag, Grid, Empty, Divider
 } from "antd";
 import {
   BookOutlined, PlusOutlined, EditOutlined, DeleteOutlined, UsergroupAddOutlined, SearchOutlined
@@ -18,11 +18,6 @@ import {
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { useBreakpoint } = Grid;
-
-// Component ย่อยสำหรับตาราง (ไม่มีการเปลี่ยนแปลง)
-const TemplateTable = ({ templates, onEdit, onDelete, loading }) => {
-  // ... (This component seems to be a leftover from a previous file, it's not used here, but keeping it doesn't cause harm)
-};
 
 export default function AdminSubjectsPage() {
   const { role, loading: authLoading } = useAuth();
@@ -40,24 +35,34 @@ export default function AdminSubjectsPage() {
   const [targetKeys, setTargetKeys] = useState([]);
   const [enrollmentLoading, setEnrollmentLoading] = useState(false);
   const screens = useBreakpoint();
+  const [labCreditDivider, setLabCreditDivider] = useState(3);
+  const [selectedYearFilter, setSelectedYearFilter] = useState('all'); // State สำหรับกรองชั้นปี
 
-  // --- โค้ดที่แก้ไข ---
-  // 2. ย้าย fetchData ออกมาและหุ้มด้วย useCallback
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [subjectsRes, instructorsRes] = await Promise.all([getAllSubjects(), getInstructors()]);
     if (subjectsRes.success) setSubjects(subjectsRes.data);
     if (instructorsRes.success) setInstructors(instructorsRes.data);
     setLoading(false);
-  }, []); // Dependency ว่าง เพราะไม่ได้อิงกับ state/props ใดๆ
+  }, []);
 
-  // 3. useEffect จะเรียกใช้ fetchData ที่เสถียรแล้ว
   useEffect(() => {
     if (!authLoading && role === 'admin') {
       fetchData();
     }
-  }, [authLoading, role, fetchData]); // ใส่ fetchData ใน dependency array
-  // --- สิ้นสุดโค้ดที่แก้ไข ---
+  }, [authLoading, role, fetchData]);
+
+  const handleFormValuesChange = useCallback((_, allValues) => {
+    const { theory_credits = 0, lab_credits = 0 } = allValues;
+    const divider = Number(labCreditDivider) > 0 ? Number(labCreditDivider) : 1;
+    const calculatedCredits = Number(theory_credits) + (Number(lab_credits) / divider);
+    const roundedCredits = Math.round(calculatedCredits * 100) / 100;
+    form.setFieldsValue({ total_credits: roundedCredits });
+  }, [labCreditDivider, form]);
+
+  useEffect(() => {
+    handleFormValuesChange(null, form.getFieldsValue());
+  }, [labCreditDivider, handleFormValuesChange, form]);
 
   const handleSubjectSubmit = async (values) => {
     setFormLoading(true);
@@ -68,7 +73,7 @@ export default function AdminSubjectsPage() {
       const teacherResult = await updateSubjectTeachers(subjectId, teacher_ids || []);
       if (teacherResult.success) {
         message.success(`บันทึกข้อมูลสำเร็จ`);
-        await fetchData(); // <--- ตอนนี้สามารถเรียกได้แล้ว
+        await fetchData();
         setIsSubjectModalOpen(false);
       } else {
         message.warn("บันทึกวิชาสำเร็จ แต่เกิดข้อผิดพลาดในการกำหนดผู้สอน: " + teacherResult.error);
@@ -83,7 +88,7 @@ export default function AdminSubjectsPage() {
     const result = await deleteSubject(subjectId);
     if (result.success) {
       message.success("ลบรายวิชาสำเร็จ");
-      await fetchData(); // <--- ตอนนี้สามารถเรียกได้แล้ว
+      await fetchData();
     } else {
       message.error("เกิดข้อผิดพลาดในการลบ: " + result.error);
     }
@@ -94,7 +99,7 @@ export default function AdminSubjectsPage() {
     const res = await enrollStudents(selectedSubject.id, targetKeys);
     if (res.success) {
       message.success("บันทึกการลงทะเบียนสำเร็จ");
-      await fetchData(); // <--- เรียก fetchData เพื่ออัปเดตจำนวน นศ.
+      await fetchData();
       setIsEnrollModalOpen(false);
     } else {
       message.error("เกิดข้อผิดพลาด: " + res.error);
@@ -116,18 +121,31 @@ export default function AdminSubjectsPage() {
 
   const openEnrollModal = async (subject) => {
     setSelectedSubject(subject);
+    setSelectedYearFilter('all'); // Reset filter ทุกครั้งที่เปิด Modal
     setEnrollmentLoading(true);
     setIsEnrollModalOpen(true);
     const [studentsRes, enrolledRes] = await Promise.all([getStudentsForEnrollment(), getEnrolledStudents(subject.id)]);
-    if (studentsRes.success) setAllStudents(studentsRes.data.map(s => ({ key: s.id, title: `${s.user.full_name} (${s.student_id})` })));
+    if (studentsRes.success) {
+      const formattedStudents = studentsRes.data.map(s => ({
+        key: s.id,
+        title: `${s.user.full_name} (${s.student_id})`,
+        year_level: s.year_level // เพิ่ม year_level เข้ามา
+
+      }));
+      setAllStudents(formattedStudents);
+    }
     if (enrolledRes.success) setTargetKeys(enrolledRes.data);
     setEnrollmentLoading(false);
   };
 
-  const handleFormValuesChange = (_, allValues) => {
-    const { theory_credits = 0, lab_credits = 0 } = allValues;
-    form.setFieldsValue({ total_credits: Number(theory_credits) + (Number(lab_credits) / 2) });
-  };
+  // useMemo ใหม่สำหรับกรองนักศึกษาใน Transfer
+  const filteredStudentsForTransfer = useMemo(() => {
+    if (selectedYearFilter === 'all') {
+      return allStudents;
+
+    }
+    return allStudents.filter(student => student.year_level === selectedYearFilter);
+  }, [allStudents, selectedYearFilter]);
 
   const columns = [
     { title: 'รหัสวิชา', dataIndex: 'subject_code', key: 'code', render: (text) => <Tag color="blue">{text}</Tag> },
@@ -201,7 +219,27 @@ export default function AdminSubjectsPage() {
             <Col xs={24} sm={8}><Form.Item label="ปฏิบัติ (ป)" name="lab_credits"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
             <Col xs={24} sm={8}><Form.Item label="ศึกษาเอง (ศ)" name="self_study_credits"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
           </Row>
-          <Form.Item label="หน่วยกิตรวม (คำนวณอัตโนมัติ)"><Form.Item name="total_credits" noStyle><InputNumber disabled style={{ width: '100%' }} /></Form.Item></Form.Item>
+
+          <Row gutter={24} align="bottom">
+            <Col xs={24} sm={16}>
+              <Form.Item label="หน่วยกิตรวม (คำนวณอัตโนมัติ)">
+                <Form.Item name="total_credits" noStyle>
+                  <InputNumber disabled style={{ width: '100%' }} />
+                </Form.Item>
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={8}>
+              <Form.Item label="ตัวหารปฏิบัติ">
+                <InputNumber
+                  min={1}
+                  value={labCreditDivider}
+                  onChange={(value) => setLabCreditDivider(value || 1)}
+                  style={{ width: '100%' }}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Text type="secondary">สูตร: หน่วยกิตรวม = ทฤษฎี + (ปฏิบัติ / ตัวหารปฏิบัติ)</Text>
         </Form>
       </Modal>
       <Modal
@@ -209,16 +247,40 @@ export default function AdminSubjectsPage() {
         open={isEnrollModalOpen}
         onOk={handleEnrollmentSubmit}
         onCancel={() => setIsEnrollModalOpen(false)}
-        width={screens.lg ? 750 : 'auto'}
+        width={screens.lg ? 850 : 'auto'}
         confirmLoading={enrollmentLoading}
         okText="บันทึก"
         cancelText="ยกเลิก"
         destroyOnClose
       >
         <Spin spinning={enrollmentLoading}>
-          <Transfer dataSource={allStudents} showSearch targetKeys={targetKeys} onChange={(keys) => setTargetKeys(keys)} render={item => item.title} listStyle={{ width: '100%', height: 400 }} className="mt-6" />
+          <div className="mb-4">
+            <Text strong>กรองตามชั้นปี:</Text>
+            <Select
+              value={selectedYearFilter}
+              onChange={setSelectedYearFilter}
+              style={{ width: 150, marginLeft: 8 }}
+            >
+              <Option value="all">ทุกชั้นปี</Option>
+              <Option value={1}>ปี 1</Option>
+              <Option value={2}>ปี 2</Option>
+              <Option value={3}>ปี 3</Option>
+              <Option value={4}>ปี 4</Option>
+            </Select>
+          </div>
+          <Divider />
+
+          <Transfer
+            dataSource={filteredStudentsForTransfer} // ใช้ dataSource ที่กรองแล้ว
+            showSearch
+            targetKeys={targetKeys}
+            onChange={(keys) => setTargetKeys(keys)}
+            render={item => item.title}
+            listStyle={{ width: '100%', height: 400 }}
+            className="mt-4"
+          />
         </Spin>
       </Modal>
-    </DashboardLayout>
+    </DashboardLayout >
   );
 }
