@@ -10,7 +10,8 @@ import {
   getDashboardCreditVsWorkload,
   getDashboardProportionComparison,
   getDashboardWorkloadDistribution,
-  getDashboardAssignmentVsWorkload
+  getDashboardAssignmentVsWorkload,
+  getDistinctAcademicYears // **Import เพิ่ม**
 } from "@/services/adminDashboard";
 import { Spin, Card, Typography, Row, Col, Select, message, Empty, Space } from "antd";
 import dynamic from 'next/dynamic';
@@ -68,11 +69,43 @@ export default function AdminDashboardPage() {
   const [assignmentVsWorkloadChart, setAssignmentVsWorkloadChart] = useState(null);
 
   const [loading, setLoading] = useState(true);
-  const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear() + 543));
+
+  // States for filters
+  const [yearOptions, setYearOptions] = useState([]);
+  const [selectedYear, setSelectedYear] = useState(null);
   const [selectedSemester, setSelectedSemester] = useState(0);
 
+  // useEffect ใหม่สำหรับดึงข้อมูล Filter (ทำงานครั้งเดียว)
+  useEffect(() => {
+    const fetchFilterOptions = async () => {
+      const yearRes = await getDistinctAcademicYears();
+      if (yearRes.success && yearRes.data.length > 0) {
+        const options = yearRes.data.map(year => ({ value: year, label: `ปีการศึกษา ${year}` }));
+        setYearOptions(options);
+        // ตั้งค่าปีเริ่มต้นเป็นปีล่าสุดที่มีข้อมูล
+        if (!selectedYear) {
+          setSelectedYear(options[0].value);
+        }
+      } else {
+        // กรณีไม่มีข้อมูลเลย ให้ใช้ปีปัจจุบันเป็นค่าเริ่มต้น
+        const currentYear = String(new Date().getFullYear() + 543);
+        setYearOptions([{ value: currentYear, label: `ปีการศึกษา ${currentYear}` }]);
+        if (!selectedYear) {
+          setSelectedYear(currentYear);
+        }
+      }
+    };
+    if (!authLoading && role === 'admin') {
+      fetchFilterOptions();
+    }
+  }, [authLoading, role]); // Dependency ที่ถูกต้อง
+
   const fetchData = useCallback(async () => {
-    if (authLoading || role !== 'admin') return;
+    // จะไม่ทำงานถ้ายังไม่มี selectedYear
+    if (authLoading || role !== 'admin' || !selectedYear) {
+      setLoading(false);
+      return;
+    };
 
     setLoading(true);
     const [
@@ -88,10 +121,8 @@ export default function AdminDashboardPage() {
       getDashboardAssignmentVsWorkload(selectedYear, selectedSemester)
     ]);
 
-    // Process Summary
     setSummaryData(summaryRes.success ? summaryRes.data : null);
 
-    // Process Graph 1: Year Level Stacked Bar
     if (yearLevelRes.success && yearLevelRes.data.length > 0) {
       const categories = Object.keys(categoryTranslations);
       const yearLevels = [...new Set(yearLevelRes.data.map(item => item.year_level))].sort();
@@ -106,163 +137,31 @@ export default function AdminDashboardPage() {
       setYearLevelChart({ series, options: { chart: { stacked: true }, xaxis: { categories: yearLevels.map(y => `ปี ${y}`) }, yaxis: { title: { text: 'ชม.เฉลี่ย/คน' } } } });
     } else { setYearLevelChart(null); }
 
-    // Process Graph 2: Top Subjects
     if (subjectRes.success && subjectRes.data.length > 0) {
       const topSubjects = subjectRes.data.slice(0, 10);
       setSubjectChart({ series: [{ name: 'ชม. ที่คาดหวัง', data: topSubjects.map(s => parseFloat(s.avg_hours.toFixed(1))) }], options: { chart: { type: 'bar', height: 350 }, plotOptions: { bar: { horizontal: true } }, dataLabels: { enabled: false }, xaxis: { categories: topSubjects.map(s => s.subject_code) } } });
     } else { setSubjectChart(null); }
 
-    // --- Process Graph 3: Workload Distribution (Min/Avg/Max) ---
     if (distributionRes.success && distributionRes.data.length > 0) {
-      const data = distributionRes.data;
-      const categories = data.map(d => `ปี ${d.year_level}`);
+      const categories = distributionRes.data.map(d => `ปี ${d.year_level}`);
       setDistributionChart({
         series: [
-          { name: 'ค่าต่ำสุด', data: data.map(d => parseFloat(d.min_hours.toFixed(1))) },
-          { name: 'ค่าเฉลี่ย', data: data.map(d => parseFloat(d.avg_hours.toFixed(1))) },
-          { name: 'ค่าสูงสุด', data: data.map(d => parseFloat(d.max_hours.toFixed(1))) }
+          { name: 'ค่าต่ำสุด', data: distributionRes.data.map(d => parseFloat(d.min_hours.toFixed(1))) },
+          { name: 'ค่าเฉลี่ย', data: distributionRes.data.map(d => parseFloat(d.avg_hours.toFixed(1))) },
+          { name: 'ค่าสูงสุด', data: distributionRes.data.map(d => parseFloat(d.max_hours.toFixed(1))) }
         ],
-        options: {
-          chart: { type: 'bar', height: 350 },
-          plotOptions: { bar: { horizontal: false, columnWidth: '75%', dataLabels: { position: 'top' } } },
-          dataLabels: { enabled: true, formatter: (val) => val.toFixed(0), offsetY: -20, style: { fontSize: '12px', colors: ["#304758"] } },
-          stroke: { show: true, width: 2, colors: ['transparent'] },
-          xaxis: { categories: categories },
-          yaxis: { title: { text: 'ชั่วโมงทำงานรวม' } },
-          fill: { opacity: 1 },
-          tooltip: { y: { formatter: (val) => val.toFixed(1) + " ชั่วโมง" } }
-        }
+        options: { chart: { type: 'bar', height: 350 }, plotOptions: { bar: { horizontal: false, columnWidth: '75%', dataLabels: { position: 'top' } } }, dataLabels: { enabled: true, formatter: (val) => val.toFixed(0), offsetY: -20, style: { fontSize: '12px', colors: ["#304758"] } }, stroke: { show: true, width: 2, colors: ['transparent'] }, xaxis: { categories: categories }, yaxis: { title: { text: 'ชั่วโมงทำงานรวม' } } }
       });
     } else { setDistributionChart(null); }
 
-    // Process Graph 4: Credit vs Workload
     if (creditRes.success && creditRes.data.length > 0) {
-      const rawData = creditRes.data;
+      setCreditVsWorkloadChart({ series: [{ name: 'ภาระงาน', data: creditRes.data.map(d => [d.total_credits, parseFloat(d.avg_hours.toFixed(1))]) }], options: { chart: { type: 'scatter', height: 350 }, xaxis: { title: { text: 'จำนวนหน่วยกิต' } }, yaxis: { title: { text: 'ชม. ที่คาดหวัง' } } } });
+    } else { setCreditVsWorkloadChart(null); }
 
-      // 1. หากลุ่มหน่วยกิตที่ไม่ซ้ำกันสำหรับแกน X และ Legend
-      const creditGroups = [...new Set(rawData.map(d => d.total_credits))].sort((a, b) => a - b);
-
-      // 2. สร้าง series หลายชุด แยกตามกลุ่มหน่วยกิต
-      const series = creditGroups.map(creditValue => {
-        return {
-          name: `${creditValue} หน่วยกิต`,
-          data: rawData
-            .filter(d => d.total_credits === creditValue)
-            .map(d => [d.total_credits, parseFloat(d.avg_hours.toFixed(1))])
-        };
-      });
-
-      setCreditVsWorkloadChart({
-        series: series,
-        options: {
-          chart: { type: 'scatter', height: 350 },
-          xaxis: {
-            title: { text: 'จำนวนหน่วยกิต' },
-            type: 'numeric',
-            // หาค่า min/max จากข้อมูลจริงเพื่อให้แกนสวยงาม
-            min: Math.floor(Math.min(...creditGroups)) - 1,
-            max: Math.ceil(Math.max(...creditGroups)) + 1,
-            // กำหนดจำนวนขีดบนแกน X ให้พอดีกับจำนวนเต็มในช่วงนั้น
-            tickAmount: (Math.ceil(Math.max(...creditGroups)) + 1) - (Math.floor(Math.min(...creditGroups)) - 1),
-            labels: {
-              // บังคับให้แสดงเป็นเลขจำนวนเต็มเสมอ
-              formatter: function (val) {
-                return val.toFixed(0);
-              }
-            }
-          },
-          yaxis: { title: { text: 'ชม. ที่คาดหวังเฉลี่ย' } },
-          legend: {
-            position: 'bottom',
-            horizontalAlign: 'center',
-            markers: { radius: 12 }
-          },
-          // Tooltip แบบ Custom ที่สามารถหาชื่อวิชากลับมาได้
-          tooltip: {
-            custom: function ({ seriesIndex, dataPointIndex, w }) {
-              // หาข้อมูลของจุดที่กำลังชี้
-              const pointData = w.globals.initialSeries[seriesIndex].data[dataPointIndex];
-              const creditVal = pointData[0];
-              const hourVal = pointData[1];
-
-              // ค้นหาวิชาที่ตรงกับค่า credit และ hour ใน rawData
-              // อาจจะมีหลายตัวที่ค่าเท่ากัน, เราจะเอาตัวแรกที่เจอ
-              const subject = rawData.find(d =>
-                d.total_credits == creditVal &&
-                parseFloat(d.avg_hours.toFixed(1)) == hourVal
-              );
-
-              const subjectCode = subject ? subject.subject_code : 'N/A';
-
-              return `<div class="p-2 bg-white shadow-lg rounded border">
-                              <strong>วิชา: ${subjectCode}</strong><br/>
-                              <span>หน่วยกิต: ${creditVal}</span><br/>
-                              <span>ชม. เฉลี่ย: ${hourVal}</span>
-                            </div>`;
-            }
-          }
-        }
-      });
-    } else {
-      setCreditVsWorkloadChart(null);
-    }
-
-    // Process Graph 5: Assignment vs Workload
     if (assignmentVsWorkloadRes.success && assignmentVsWorkloadRes.data.length > 0) {
-      const rawData = assignmentVsWorkloadRes.data;
+      setAssignmentVsWorkloadChart({ series: [{ name: 'ชม. ที่คาดหวังเฉลี่ย', data: assignmentVsWorkloadRes.data.map(d => [d.assignment_count, parseFloat(d.avg_hours.toFixed(1))]) }], options: { chart: { type: 'scatter', height: 350 }, xaxis: { title: { text: 'จำนวนชิ้นงานในวิชา' }, tickAmount: 'dataPoints', type: 'numeric' }, yaxis: { title: { text: 'ชม. ที่คาดหวังเฉลี่ย' } } } });
+    } else { setAssignmentVsWorkloadChart(null); }
 
-      // 1. หากลุ่มของ "รายวิชา" ที่ไม่ซ้ำกัน (ใช้ subject_name)
-      const subjectGroups = [...new Set(rawData.map(d => d.subject_name))];
-
-      // 2. สร้าง series สำหรับ "แต่ละรายวิชา"
-      const series = subjectGroups.map(subjectName => {
-        // กรองข้อมูลเฉพาะของวิชานี้
-        const subjectData = rawData.filter(d => d.subject_name === subjectName);
-        return {
-          name: subjectName, // ชื่อ series คือชื่อวิชา
-          // data คือ Array ของจุด [x, y]
-          data: subjectData.map(d => [d.assignment_count, parseFloat(d.avg_hours.toFixed(1))])
-        };
-      });
-
-      // 3. คำนวณ min/max ของแกน X เพื่อการแสดงผลที่สวยงาม
-      const allAssignmentCounts = rawData.map(d => d.assignment_count);
-      const minCount = Math.min(...allAssignmentCounts);
-      const maxCount = Math.max(...allAssignmentCounts);
-
-      setAssignmentVsWorkloadChart({
-        series: series, // ใช้ series ใหม่ที่มีหลายชุด
-        options: {
-          chart: { type: 'scatter', height: 350 },
-          xaxis: {
-            title: { text: 'จำนวนชิ้นงานในวิชา' },
-            type: 'numeric',
-            min: Math.floor(minCount) > 0 ? Math.floor(minCount) - 1 : 0,
-            max: Math.ceil(maxCount) + 1,
-            tickAmount: Math.ceil(maxCount) - Math.floor(minCount) + 2,
-            labels: {
-              formatter: function (val) {
-                return val.toFixed(0);
-              }
-            }
-          },
-          yaxis: { title: { text: 'ชม. ที่คาดหวังเฉลี่ย' } },
-          // แสดง Legend เพื่อบอกว่าสีไหนคือวิชาอะไร
-          legend: {
-            position: 'bottom',
-            horizontalAlign: 'center',
-            markers: { radius: 12 }
-          },
-          tooltip: {
-            x: { formatter: (val) => `${val} ชิ้นงาน` },
-            y: { formatter: (val) => `${val.toFixed(1)} ชม.` }
-          }
-        }
-      });
-    } else {
-      setAssignmentVsWorkloadChart(null);
-    }
-    // Process Graph 6: Proportion Comparison
     if (proportionRes.success && proportionRes.data.length > 0) {
       const categories = proportionRes.data.map(p => categoryTranslations[p.category] || p.category);
       const series = [{ name: 'ตามแผน (%)', data: proportionRes.data.map(p => p.target_percentage) }, { name: 'ตามจริง (%)', data: proportionRes.data.map(p => parseFloat(p.actual_percentage.toFixed(1))) }];
@@ -272,7 +171,10 @@ export default function AdminDashboardPage() {
     setLoading(false);
   }, [authLoading, role, selectedYear, selectedSemester]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // useEffect เดิมสำหรับดึงข้อมูล Dashboard
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   if (authLoading) return <div className="flex justify-center items-center h-screen"><Spin size="large" /></div>;
   if (role !== 'admin') return <DashboardLayout><div>Access Denied</div></DashboardLayout>;
@@ -304,8 +206,26 @@ export default function AdminDashboardPage() {
               <Text type="secondary">ภาพรวมข้อมูลภาระงานทั้งหมดในระบบ</Text>
             </div>
             <Space direction="vertical" align="end" className="w-full sm:w-auto sm:flex-row">
-              <Select value={selectedYear} onChange={setSelectedYear} style={{ width: '100%' }} size="large" options={[{ value: '2568', label: 'ปี 2568' }, { value: '2567', label: 'ปี 2567' }, { value: '2566', label: 'ปี 2566' }]} />
-              <Select value={selectedSemester} onChange={setSelectedSemester} style={{ width: '100%' }} size="large" options={[{ value: 0, label: 'ทุกภาคการศึกษา' }, { value: 1, label: 'ภาคเรียนที่ 1' }, { value: 2, label: 'ภาคเรียนที่ 2' }, { value: 3, label: 'ภาคฤดูร้อน' }]} />
+              <Select
+                value={selectedYear}
+                onChange={setSelectedYear}
+                style={{ width: '100%', minWidth: 150 }}
+                size="large"
+                options={yearOptions}
+                loading={yearOptions.length === 0}
+              />
+              <Select
+                value={selectedSemester}
+                onChange={setSelectedSemester}
+                style={{ width: '100%', minWidth: 180 }}
+                size="large"
+                options={[
+                  { value: 0, label: 'ทุกภาคการศึกษา' },
+                  { value: 1, label: 'ภาคเรียนที่ 1' },
+                  { value: 2, label: 'ภาคเรียนที่ 2' },
+                  { value: 3, label: 'ภาคฤดูร้อน' }
+                ]}
+              />
             </Space>
           </div>
           {loading ? <div className="text-center py-10"><Spin size="large" /></div> : (
