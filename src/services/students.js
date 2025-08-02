@@ -2,30 +2,51 @@
 import { supabase } from '@/config/supabase';
 
 // 1. ดึงข้อมูลนักศึกษาทั้งหมดมาแสดงในตาราง
+// **แก้ไข getAllStudents ให้ JOIN ตารางใหม่**
 export async function getAllStudents() {
-  try {
-    const { data, error } = await supabase
-      .from('students')
-      .select(`
-        id,
-        student_id,
-        year_level,
-        academic_year,
-        user:user_id ( id, full_name ),
-        advisor:advisor_id ( id, full_name )
-      `)
-      .order('student_id');
+  const { data, error } = await supabase
+    .from('students')
+    .select(`
+      id, student_id, year_level, academic_year,
+      user:user_id ( full_name ),
+      advisors:student_advisors ( advisor:users ( id, full_name ) )
+    `);
 
-    if (error) {
-      throw error;
-    }
-
-    return { success: true, data };
-
-  } catch (error) {
-    console.error("Service Error in getAllStudents:", error);
+  if (error) {
+    console.error("Error fetching students:", error.message);
     return { success: false, error: error.message };
   }
+
+  // แปลงข้อมูล advisors ที่ซ้อนกันอยู่ให้อยู่ในรูปแบบที่ใช้ง่าย
+  const formattedData = data.map(student => ({
+    ...student,
+    advisor_list: student.advisors.map(a => a.advisor)
+  }));
+  return { success: true, data: formattedData };
+}
+
+// **เพิ่ม Service ใหม่สำหรับอัปเดตอาจารย์ที่ปรึกษา**
+export async function updateStudentAdvisors(studentId, advisorIds = []) {
+  // 1. ลบของเก่าทั้งหมดของนักศึกษาคนนี้
+  const { error: deleteError } = await supabase
+    .from('student_advisors')
+    .delete()
+    .eq('student_id', studentId);
+
+  if (deleteError) return { success: false, error: deleteError.message };
+
+  // ถ้าไม่มี advisorIds ใหม่ให้ใส่ ก็จบการทำงาน
+  if (advisorIds.length === 0) return { success: true };
+
+  // 2. เพิ่มของใหม่ทั้งหมด
+  const recordsToInsert = advisorIds.map(id => ({ student_id: studentId, advisor_id: id }));
+  const { data, error: insertError } = await supabase
+    .from('student_advisors')
+    .insert(recordsToInsert)
+    .select();
+
+  if (insertError) return { success: false, error: insertError.message };
+  return { success: true, data };
 }
 
 export async function getInstructors() {
