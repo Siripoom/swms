@@ -247,12 +247,12 @@ export default function ReportPage() {
               </Button>
               {activeTab.startsWith('detail') &&
                 <Button icon={<DownloadOutlined />} onClick={handleExportDetailCSV} disabled={reportData.length === 0}>
-                  {screens.xs ? '' : 'Export CSV (ละเอียด)'}
+                  {screens.xs ? '' : 'Export CSV'}
                 </Button>
               }
               {activeTab === 'summary' &&
                 <Button icon={<DownloadOutlined />} onClick={handleExportSummaryCSV} disabled={summaryData.length === 0}>
-                  {screens.xs ? '' : 'Export CSV (สรุป)'}
+                  {screens.xs ? '' : 'Export CSV'}
                 </Button>
               }
             </Space>
@@ -290,7 +290,7 @@ export default function ReportPage() {
               { label: 'รายบุคคล', key: 'detail-student' },
               { label: 'รายปีการศึกษา', key: 'detail-year' },
               { label: 'รายวิชา', key: 'detail-subject' },
-              { label: 'สรุป (FTES)', key: 'summary' },
+              { label: 'สรุป', key: 'summary' },
             ]}
           />
           {renderFilterPanel()}
