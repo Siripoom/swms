@@ -79,3 +79,16 @@ export async function getDashboardWorkloadBoxplot(academicYear, semester) {
   return { success: true, data };
 }
 
+export async function getDistinctAcademicYears() {
+  const { data, error } = await supabase
+    .from('subjects')
+    .select('academic_year');
+
+  if (error) {
+    console.error("Error fetching distinct academic years:", error);
+    return { success: false, error: error.message };
+  }
+
+  const distinctYears = [...new Set(data.map(item => item.academic_year))].sort((a, b) => b.localeCompare(a));
+  return { success: true, data: distinctYears };
+}

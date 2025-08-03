@@ -77,15 +77,10 @@ export async function getStudentsForEnrollment() {
   try {
     const { data, error } = await supabase
       .from('students')
-      // *** จุดที่แก้ไข ***
-      // ระบุชัดเจนว่าให้ Join ตาราง users ผ่าน Foreign Key `user_id`
-      .select(`id, student_id, user:user_id(full_name)`)
+      .select(`id, student_id, year_level, user:user_id(full_name)`)
       .order('student_id');
-
     if (error) throw error;
-
     return { success: true, data };
-
   } catch (error) {
     console.error("Service error in getStudentsForEnrollment:", error);
     return { success: false, error: error.message };
