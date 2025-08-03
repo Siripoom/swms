@@ -1,6 +1,9 @@
 // layout.js
 import { AuthProvider } from "@/contexts/AuthContext";
-import { ConfigProvider, App } from "antd";
+import { ConfigProvider, App } from 'antd';
+import "./globals.css";ayout.js
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ConfigProvider } from "antd";
 import "./globals.css";
 
 export const metadata = {
@@ -32,10 +35,6 @@ const antdTheme = {
   },
 };
 
-function AppWrapper({ children }) {
-  return <App>{children}</App>;
-}
-
 export default function RootLayout({ children }) {
   return (
     <html lang="th">
@@ -49,11 +48,13 @@ export default function RootLayout({ children }) {
         <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
         <meta name="theme-color" content="#1677ff" />
       </head>
-      <body>
+            <body className="antialiased">
         <ConfigProvider theme={antdTheme}>
-          <AuthProvider>
-            <AppWrapper>{children}</AppWrapper>
-          </AuthProvider>
+          <App>
+            <AuthProvider>
+              {children}
+            </AuthProvider>
+          </App>
         </ConfigProvider>
       </body>
     </html>

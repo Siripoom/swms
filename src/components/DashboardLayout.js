@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
-import { Spin } from "antd";
+import { PageLoadingSkeleton } from "./LoadingSkeleton";
 
 export default function DashboardLayout({ children, title, requiredRole }) {
   // 1. ดึงข้อมูลทั้งหมดจาก AuthContext เดิมของคุณ
@@ -31,8 +31,8 @@ export default function DashboardLayout({ children, title, requiredRole }) {
   // แสดงหน้า Loading ขณะรอข้อมูลจาก Context
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Spin size="large" tip="กำลังโหลดข้อมูลผู้ใช้..." />
+      <div className="min-h-screen bg-gray-50">
+        <PageLoadingSkeleton />
       </div>
     );
   }
@@ -40,8 +40,8 @@ export default function DashboardLayout({ children, title, requiredRole }) {
   // ป้องกันการ render เนื้อหา ถ้ายังไม่มีสิทธิ์ (ป้องกันการกระพริบ)
   if (requiredRole && !requiredRole.includes(role)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Spin size="large" tip="ตรวจสอบสิทธิ์..." />
+      <div className="min-h-screen bg-gray-50">
+        <PageLoadingSkeleton />
       </div>
     );
   }
@@ -51,20 +51,21 @@ export default function DashboardLayout({ children, title, requiredRole }) {
   const userName = userProfile?.full_name || "ผู้ใช้งาน";
   let identifier = "บทบาท"; // ค่าเริ่มต้น
 
-  if (userProfile) { // เช็คให้แน่ใจว่า userProfile ไม่ใช่ null
+  if (userProfile) {
+    // เช็คให้แน่ใจว่า userProfile ไม่ใช่ null
     switch (role) {
-      case 'student':
+      case "student":
         // *** ดึงรหัสนักศึกษาจาก `userProfile.student_identifier` ***
         // ซึ่งเป็น property ที่ AuthContext ของคุณสร้างไว้ให้แล้ว
         identifier = userProfile.student_identifier || "ไม่มีรหัส";
         break;
-      case 'teacher':
+      case "teacher":
         identifier = "อาจารย์";
         break;
-      case 'department_head':
+      case "department_head":
         identifier = "ผู้บริหารภาควิชา";
         break;
-      case 'admin':
+      case "admin":
         identifier = "ผู้ดูแลระบบ";
         break;
     }

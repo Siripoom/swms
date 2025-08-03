@@ -3,6 +3,25 @@ import { NextResponse } from "next/server";
 
 export async function middleware(req) {
   const res = NextResponse.next();
+
+  // Add performance headers
+  res.headers.set("X-DNS-Prefetch-Control", "on");
+  res.headers.set("X-Frame-Options", "DENY");
+  res.headers.set("X-Content-Type-Options", "nosniff");
+  res.headers.set("Referrer-Policy", "origin-when-cross-origin");
+
+  // Skip auth check for static files
+  if (
+    req.nextUrl.pathname.startsWith("/_next/") ||
+    req.nextUrl.pathname.startsWith("/api/") ||
+    req.nextUrl.pathname.startsWith("/public/") ||
+    req.nextUrl.pathname.match(
+      /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/
+    )
+  ) {
+    return res;
+  }
+
   const supabase = createMiddlewareClient({ req, res });
 
   // รีเฟรช session ถ้าหมดอายุ

@@ -1,10 +1,26 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import Reacexport default function LoginPage() {
+  const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const router = useRouter();
+  const { message } = App.useApp();
+
+  // Memoized redirect function
+  const redirectUserByRole = useCallback(async (userId) => {State, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/config/supabase";
 import { PageLoadingSkeleton } from "@/components/LoadingSkeleton";
-import { Form, Input, Button, Card, Typography, Checkbox, App } from "antd";
+import {
+  Form,
+  Input,
+  Button,
+  Card,
+  Typography,
+  Checkbox,
+  App,
+} from "antd";
 import {
   UserOutlined,
   LockOutlined,
@@ -21,7 +37,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const router = useRouter();
-  const { message } = App.useApp();
 
   // Memoized redirect function
   const redirectUserByRole = useCallback(
@@ -67,7 +82,7 @@ export default function LoginPage() {
         return false;
       }
     },
-    [router, message]
+    [router]
   );
 
   useEffect(() => {
@@ -78,6 +93,7 @@ export default function LoginPage() {
         } = await supabase.auth.getSession();
 
         if (session) {
+          // Redirect ตาม role ถ้ามี session
           await redirectUserByRole(session.user.id);
         }
       } catch (error) {
@@ -130,6 +146,12 @@ export default function LoginPage() {
     message.error("กรุณากรอกข้อมูลให้ครบถ้วน");
   };
 
+  // ตัวอย่าง UI ลืมรหัสผ่าน แบบง่าย ๆ (เชื่อมไปหน้าลืมรหัสผ่าน)
+  const handleForgotPassword = () => {
+    router.push("/forgot-password");
+  };
+
+  // แสดง loading skeleton ขณะตรวจสอบ session
   if (initialLoading) {
     return <PageLoadingSkeleton />;
   }
@@ -219,6 +241,9 @@ export default function LoginPage() {
                       จดจำการเข้าสู่ระบบ
                     </Checkbox>
                   </Form.Item>
+                  {/* <Button type="link" className="p-0 text-sm" onClick={handleForgotPassword}>
+                    ลืมรหัสผ่าน?
+                  </Button> */}
                 </div>
               </Form.Item>
 
@@ -234,6 +259,15 @@ export default function LoginPage() {
                   {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
                 </Button>
               </Form.Item>
+
+              {/* <div className="text-center text-sm text-gray-500 mt-6">
+                <Text>
+                  ต้องการความช่วยเหลือ?{" "}
+                  <Button type="link" className="p-0 text-sm">
+                    ติดต่อผู้ดูแลระบบ
+                  </Button>
+                </Text>
+              </div> */}
             </Form>
           </div>
         </Card>
@@ -242,10 +276,11 @@ export default function LoginPage() {
           <Text>
             © 2025 ระบบจัดการภาระงานนักศึกษา วิทยาลัยพยาบาลบรมราชชนนี ชัยนาท
           </Text>
-
+          <br />
+          <Text className="text-xs">พัฒนาโดย สิริภูมิ อาทรสิริรัตน์</Text>
           <br />
           <Text className="text-xs">
-            พัฒนาโดย อ.ประกาศิต พูลวงษ์ และ อ.ฮิโรชิเกะ นาราฮารา
+            อ.ประกาศิต พูลวงษ์ และ อ.ฮิโรชิเกะ นาราฮารา
           </Text>
         </div>
       </div>

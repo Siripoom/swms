@@ -6,7 +6,11 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "analyze": "ANALYZE=true npm run build",
+    "lighthouse": "lhci autorun --upload.target=temporary-public-storage",
+    "check-bundle": "npx @next/bundle-analyzer",
+    "performance": "npm run build && npm run lighthouse"
   },
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
