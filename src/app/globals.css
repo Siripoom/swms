@@ -1,114 +1,12 @@
 /* globals.css */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
-
-/* Preload critical fonts with font-display: swap for better performance */
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('https://fonts.gstatic.com/s/dmsans/v15/rP2Hp2ywxg089UriCZ2IHTWEBlwu8Q.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@font-face {
-  font-family: 'Noto Sans Thai';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('https://fonts.gstatic.com/s/notosansthai/v20/iJWnBXeUZi_OHPqn4wq6hQ2_hbJ1xyN9wd43SofNWcd1MSTdaUH.woff2') format('woff2');
-  unicode-range: U+0E01-0E5B, U+200B-200D, U+25CC;
-}
 
 :root {
   --font-dm-sans: 'DM Sans', 'Noto Sans Thai', sans-serif;
 }
 
-* {
-  box-sizing: border-box;
-}
-
-html {
-  scroll-behavior: smooth;
-}
-
 body {
   font-family: var(--font-dm-sans);
-  font-feature-settings: 'rlig' 1, 'calt' 1;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  line-height: 1.6;
-}
-
-/* Performance optimization for images */
-img {
-  max-width: 100%;
-  height: auto;
-}
-
-/* Optimize rendering for animations */
-.animate-spin,
-.animate-pulse,
-.animate-bounce {
-  will-change: transform;
-}
-
-/* Loading skeleton animations */
-@keyframes skeleton-loading {
-  0% {
-    background-position: -200px 0;
-  }
-  100% {
-    background-position: calc(200px + 100%) 0;
-  }
-}
-
-.skeleton-loading {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200px 100%;
-  animation: skeleton-loading 1.5s infinite;
-}
-
-/* Reduce motion for users who prefer it */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
-/* Critical path optimization */
-.ant-layout {
-  min-height: 100vh;
-}
-
-.ant-spin-container {
-  transition: opacity 0.3s;
-}
-
-/* Optimize table rendering */
-.ant-table {
-  contain: layout;
-}
-
-.ant-table-tbody > tr > td {
-  transition: none;
-}
-
-/* Chart optimization */
-.apexcharts-canvas {
-  contain: strict;
-}
-
-/* Improve scroll performance */
-.overflow-auto,
-.overflow-y-auto,
-.overflow-x-auto {
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
 }

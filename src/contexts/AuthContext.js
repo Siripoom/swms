@@ -1,14 +1,8 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-} from "react";
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/config/supabase";
+import { validateSession } from "@/services/auth";
 
 const AuthContext = createContext({
   session: null,
@@ -18,6 +12,7 @@ const AuthContext = createContext({
   role: null,
   studentId: null,
   refreshUserProfile: null,
+  clearAuthData: null,
 });
 
 export const AuthProvider = ({ children }) => {
@@ -27,11 +22,39 @@ export const AuthProvider = ({ children }) => {
   const initialLoadComplete = useRef(false);
   const userProfileCache = useRef(new Map());
 
-  // Memoized profile fetcher
+  // ฟังก์ชันเคลียร์ข้อมูล auth ทั้งหมด
+  const clearAuthData = useCallback(() => {
+    setSession(null);
+    setUserProfile(null);
+    userProfileCache.current.clear();
+
+    // เคลียร์ localStorage และ sessionStorage
+    if (typeof window !== 'undefined') {
+      localStorage.clear();
+      sessionStorage.clear();
+    }
+  }, []);
+
+  // ตรวจสอบ session validity
+  useEffect(() => {
+    const handleFocus = async () => {
+      const isValid = await validateSession();
+      if (!isValid && session) {
+        console.log("Session invalid, clearing auth data");
+        clearAuthData();
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener("focus", handleFocus);
+      return () => window.removeEventListener("focus", handleFocus);
+    }
+  }, [session, clearAuthData]);
+
+  // ฟังก์ชันดึงข้อมูลโปรไฟล์ผู้ใช้จาก Cache
   const getUserProfile = useCallback(async (user) => {
     if (!user) return null;
 
-    // Check cache first
     const cacheKey = user.id;
     if (userProfileCache.current.has(cacheKey)) {
       return userProfileCache.current.get(cacheKey);
@@ -44,13 +67,7 @@ export const AuthProvider = ({ children }) => {
         .eq("id", user.id)
         .single();
 
-      if (userError) {
-        console.error(
-          "AuthContext: Error fetching user profile:",
-          userError.message
-        );
-        throw userError;
-      }
+      if (userError) throw userError;
 
       if (!baseProfile) return null;
 
@@ -64,11 +81,7 @@ export const AuthProvider = ({ children }) => {
           .single();
 
         if (studentError) {
-          console.warn(
-            "AuthContext: Could not find student details for user:",
-            user.id,
-            studentError.message
-          );
+          console.warn("Could not find student details:", studentError.message);
         } else {
           enrichedProfile = {
             ...baseProfile,
@@ -78,72 +91,42 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-      // Cache the result
       userProfileCache.current.set(cacheKey, enrichedProfile);
-
       return enrichedProfile;
-    } catch (e) {
-      console.error(
-        "AuthContext: Exception in getUserProfile. Signing out...",
-        e
-      );
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+      clearAuthData();
       await supabase.auth.signOut();
       return null;
     }
-  }, []);
+  }, [clearAuthData]);
 
-  // Refresh function to clear cache and refetch
-  const refreshUserProfile = useCallback(async () => {
-    if (session?.user) {
-      userProfileCache.current.delete(session.user.id);
-      const profile = await getUserProfile(session.user);
-      setUserProfile(profile);
-    }
-  }, [session?.user, getUserProfile]);
-
+  // การจัดการการเปลี่ยนแปลงของ Auth State
   useEffect(() => {
-    let mounted = true;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+      setLoading(true);
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      if (!mounted) return;
-
-      const hasUserChanged = currentSession?.user?.id !== session?.user?.id;
-      if (!hasUserChanged && initialLoadComplete.current) {
+      if (event === 'SIGNED_OUT') {
+        clearAuthData();
+        setLoading(false);
         return;
       }
 
-      setLoading(true);
-
       if (currentSession?.user) {
         const profile = await getUserProfile(currentSession.user);
-        if (mounted) {
-          setSession(currentSession);
-          setUserProfile(profile);
-        }
+        setSession(currentSession);
+        setUserProfile(profile);
       } else {
-        if (mounted) {
-          setSession(null);
-          setUserProfile(null);
-          userProfileCache.current.clear();
-        }
+        clearAuthData();
       }
 
-      if (!initialLoadComplete.current) {
-        initialLoadComplete.current = true;
-      }
-
-      if (mounted) {
-        setLoading(false);
-      }
+      setLoading(false);
     });
 
     return () => {
-      mounted = false;
       subscription?.unsubscribe();
     };
-  }, [session?.user?.id, getUserProfile]);
+  }, [getUserProfile, clearAuthData]);
 
   const value = {
     session,
@@ -152,7 +135,8 @@ export const AuthProvider = ({ children }) => {
     user: session?.user,
     role: userProfile?.role,
     studentId: userProfile?.student_profile_id || null,
-    refreshUserProfile,
+    refreshUserProfile: clearAuthData,
+    clearAuthData,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

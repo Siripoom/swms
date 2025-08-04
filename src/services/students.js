@@ -3,6 +3,22 @@ import { supabase } from '@/config/supabase';
 
 // 1. ดึงข้อมูลนักศึกษาทั้งหมดมาแสดงในตาราง
 // **แก้ไข getAllStudents ให้ JOIN ตารางใหม่**
+export async function getStudentById(studentId) {
+  if (!studentId) return { success: false, error: "Student ID (PK) is required" };
+
+  const { data, error } = await supabase
+    .from('students')
+    .select('student_id, user:user_id(full_name)')
+    .eq('id', studentId)
+    .single();
+
+  if (error) {
+    console.error("Error fetching student by ID:", error);
+    return { success: false, error: error.message };
+  }
+  return { success: true, data };
+}
+
 export async function getAllStudents() {
   const { data, error } = await supabase
     .from('students')

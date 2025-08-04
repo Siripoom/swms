@@ -1,3 +1,4 @@
+// Sidebar.js
 "use client";
 
 import { useState } from "react";
@@ -59,7 +60,6 @@ export default function Sidebar({ userRole, userName = "ผู้ใช้งา
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  // เมนูตาม Role (ปรับปรุงให้ตรงกับรูป)
   const getMenuItems = () => {
     switch (userRole) {
       case "admin":
@@ -72,7 +72,7 @@ export default function Sidebar({ userRole, userName = "ผู้ใช้งา
           { name: "กำหนดสัดส่วนภาระงาน", href: "/admin/proportions", icon: Settings },
           { name: "รายงาน", href: "/admin/reports", icon: FileText },
         ];
-      case "department_head": // ใช้ดีไซน์เดียวกับ Admin
+      case "department_head":
         return [
           { name: "Dashboard", href: "/department/dashboard", icon: LayoutDashboard },
           { name: "รายงานภาระงาน", href: "/department/reports", icon: FileText },
@@ -81,6 +81,7 @@ export default function Sidebar({ userRole, userName = "ผู้ใช้งา
         return [
           { name: "Dashboard", href: "/teacher/dashboard", icon: LayoutDashboard },
           { name: "จัดการภาระงาน", href: "/teacher/assignments", icon: ClipboardList },
+          { name: "นักศึกษาในที่ปรึกษา", href: "/teacher/advisor-report", icon: Users },
           { name: "รายงาน", href: "/teacher/reports", icon: FileText },
         ];
       case "student":
@@ -113,7 +114,6 @@ export default function Sidebar({ userRole, userName = "ผู้ใช้งา
     }
   };
 
-  // ---- Mobile Menu Button and Overlay (เหมือนเดิม) ----
   const mobileMenuControls = (
     <>
       <button
@@ -131,9 +131,7 @@ export default function Sidebar({ userRole, userName = "ผู้ใช้งา
     </>
   );
 
-  // ---- Conditional Rendering: Teacher (Light Theme) vs Others (Dark Theme) ----
-
-  // 1. Teacher Sidebar (Light Theme - ตามภาพที่ 1)
+  // 1. Teacher Sidebar (Light Theme - ไม่มีการเปลี่ยนแปลง)
   if (userRole === "teacher") {
     return (
       <>
@@ -202,7 +200,7 @@ export default function Sidebar({ userRole, userName = "ผู้ใช้งา
     );
   }
 
-  // 2. Admin, Student, etc. Sidebar (Dark Theme - ตามภาพที่ 2, 3)
+  // 2. Admin, Student, etc. Sidebar (Dark Theme - แก้ไขแล้ว)
   return (
     <>
       {mobileMenuControls}
@@ -239,13 +237,13 @@ export default function Sidebar({ userRole, userName = "ผู้ใช้งา
                 className={`
                   flex items-center space-x-4 px-4 py-3 rounded-lg transition-colors duration-200 relative
                   ${isActive
-                    ? "bg-blue-700"
-                    : "text-blue-100 hover:bg-blue-700/60"
+                    ? "bg-blue-700 !text-white" // <-- เพิ่ม !text-white เพื่อความแน่นอน
+                    : "!text-blue-100 hover:bg-blue-700/60" // <-- เพิ่ม ! เพื่อ override สี antd
                   }
                 `}
               >
                 {isActive && <div className="absolute left-0 top-0 h-full w-1 bg-white rounded-r-full"></div>}
-                <Icon size={22} />
+                <Icon size={22} className="!text-inherit" /> {/* <-- ทำให้ icon รับสีจาก parent */}
                 <span className="font-medium text-sm">{item.name}</span>
               </Link>
             );
@@ -262,7 +260,7 @@ export default function Sidebar({ userRole, userName = "ผู้ใช้งา
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className="flex items-center space-x-4 w-full px-4 py-3 rounded-lg text-blue-100 hover:bg-blue-700/60 transition-colors duration-200 disabled:opacity-50"
+            className="flex items-center space-x-4 w-full px-4 py-3 rounded-lg !text-blue-100 hover:bg-blue-700/60 transition-colors duration-200 disabled:opacity-50" // <-- เพิ่ม !
           >
             <LogOut size={22} />
             <span className="font-medium text-sm">
