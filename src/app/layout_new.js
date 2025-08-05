@@ -2,14 +2,12 @@
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ConfigProvider, App } from "antd";
 import "./globals.css";
-// ไม่จำเป็นต้อง import Sidebar ที่นี่ เพราะมันถูกเรียกใช้ในหน้าอื่น
-// import Sidebar from "@/components/Sidebar";
 
 export const metadata = {
   title: "SWMS - Student Workload Management System",
   description: "ระบบจัดการภาระงานนักศึกษา",
   keywords: "workload, student, management, university",
-  // viewport: "width=device-width, initial-scale=1",
+  viewport: "width=device-width, initial-scale=1",
   robots: "index, follow",
 };
 
@@ -18,15 +16,12 @@ const antdTheme = {
     fontFamily: `'DM Sans', 'Noto Sans Thai', sans-serif`,
     borderRadius: 6,
     colorPrimary: "#1677ff",
-    colorText: "#000000",
-    colorTextLightSolid: "#ffffff",
-    // ไม่มีการตั้งค่า colorLink ที่นี่อีกต่อไป เพื่อให้สี Link กลับไปเป็นค่าเริ่มต้นของ Ant Design
   },
   components: {
     Layout: {
       bodyBg: "#f5f5f5",
       headerBg: "#fff",
-      // siderBg ไม่ได้ถูกใช้โดยตรง เพราะเราใช้ Tailwind ใน Sidebar.js
+      siderBg: "#fff",
     },
     Card: {
       borderRadius: 8,

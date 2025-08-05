@@ -4,22 +4,31 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import { getMyWorkloadReport } from "@/services/workloads";
-import { getDistinctAcademicYears } from "@/services/subjects"; // **Import เพิ่ม**
-import { Table, Card, Typography, Spin, Select, Row, Col, Divider, message } from "antd";
+import { getDistinctAcademicYears } from "@/services/subjects";
+import { Table, Card, Typography, Spin, Select, Row, Col, message, Empty, Button, Divider } from "antd";
+import { BarChartOutlined, DownloadOutlined } from "@ant-design/icons";
 import dayjs from 'dayjs';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import '@/lib/fonts/THSarabunNew-normal.js';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 export default function MyReportPage() {
-  const { role, loading: authLoading, studentId } = useAuth();
-
+  const { userProfile, role, loading: authLoading, studentId } = useAuth();
   const [reportData, setReportData] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // --- States สำหรับ Filters ---
-  const [yearOptions, setYearOptions] = useState([]); // State สำหรับเก็บตัวเลือกปี
-  const [selectedYear, setSelectedYear] = useState(null); // เริ่มต้นเป็น null
+  const [yearOptions, setYearOptions] = useState([]);
+  const [selectedYear, setSelectedYear] = useState(null);
   const [selectedSemester, setSelectedSemester] = useState(null);
+
+  const categoryTranslations = {
+    academic: 'วิชาการ',
+    research: 'วิจัย/นวัตกรรม',
+    academic_service: 'บริการวิชาการ',
+    student_affairs: 'กิจการนักศึกษา',
+    personal: 'ส่วนตัว/การใช้ชีวิต'
+  };
 
   const semesterOptions = [
     { value: 1, label: 'ภาคการศึกษาที่ 1' },
@@ -27,130 +36,189 @@ export default function MyReportPage() {
     { value: 3, label: 'ภาคฤดูร้อน' },
   ];
 
-  // --- useEffect สำหรับดึงข้อมูล Dropdowns (ทำงานครั้งเดียว) ---
   useEffect(() => {
     const fetchFilterOptions = async () => {
       const res = await getDistinctAcademicYears();
       if (res.success && res.data.length > 0) {
-        const options = res.data.map(year => ({
-          value: year,
-          label: `ปีการศึกษา ${year}`
-        }));
+        const options = res.data.map(year => ({ value: year, label: `ปีการศึกษา ${year}` }));
         setYearOptions(options);
-        // ตั้งค่าปีเริ่มต้นให้เป็นปีล่าสุดที่มีข้อมูล
-        setSelectedYear(options[0].value);
+        if (!selectedYear) setSelectedYear(options[0].value);
       } else {
-        // ถ้าไม่มีข้อมูลปีเลย ให้ตั้งค่าเป็นปีปัจจุบัน
         const currentYear = String(new Date().getFullYear() + 543);
         setYearOptions([{ value: currentYear, label: `ปีการศึกษา ${currentYear}` }]);
-        setSelectedYear(currentYear);
+        if (!selectedYear) setSelectedYear(currentYear);
       }
     };
+    if (!authLoading && role === 'student') fetchFilterOptions();
+  }, [authLoading, role, selectedYear]);
 
-    if (!authLoading && role === 'student') {
-      fetchFilterOptions();
-    }
-  }, [authLoading, role]);
-
-  // --- useEffect สำหรับดึงข้อมูลรายงาน (ทำงานเมื่อ Filter เปลี่ยน) ---
   useEffect(() => {
     const fetchReport = async () => {
-      if (!studentId || !selectedYear) {
-        setLoading(false);
-        return;
-      }
+      if (!studentId || !selectedYear) { setLoading(false); return; }
       setLoading(true);
-      const filters = {
-        student_id: studentId,
-        academic_year: selectedYear,
-        semester: selectedSemester,
-      };
+      const filters = { student_id: studentId, academic_year: selectedYear, semester: selectedSemester };
       const res = await getMyWorkloadReport(filters);
-      if (res.success) {
-        setReportData(res.data);
-      } else {
-        message.error("ไม่สามารถดึงข้อมูลรายงานได้: " + res.error);
-      }
+      if (res.success) setReportData(res.data); else message.error("ไม่สามารถดึงข้อมูลรายงานได้: " + res.error);
       setLoading(false);
     };
-
-    // จะทำงานก็ต่อเมื่อ Auth และตัวเลือกปีพร้อม
-    if (!authLoading && studentId && selectedYear) {
-      fetchReport();
-    }
+    if (!authLoading && studentId && selectedYear) fetchReport();
   }, [authLoading, studentId, selectedYear, selectedSemester]);
 
   const summaryData = useMemo(() => {
-    const summary = {
-      academic: 0, research: 0, academic_service: 0,
-      student_affairs: 0, personal: 0
-    };
-    reportData.forEach(item => {
-      if (item.category in summary) {
-        summary[item.category] += item.hours_spent;
-      }
+    const summary = { academic: 0, research: 0, academic_service: 0, student_affairs: 0, personal: 0 };
+    if (reportData) {
+      reportData.forEach(item => { if (item.category in summary) summary[item.category] += item.hours_spent; });
+    }
+
+    const data = Object.keys(categoryTranslations).map(key => ({
+      key: key,
+      category: categoryTranslations[key],
+      hours: summary[key] || 0
+    }));
+
+    const totalHours = data.reduce((sum, item) => sum + item.hours, 0);
+
+    data.push({
+      key: 'total',
+      category: 'รวมทั้งหมด',
+      hours: totalHours,
+      isTotal: true
     });
-    return [
-      { key: 'student_affairs', category: 'กิจการนักศึกษา', hours: summary.student_affairs },
-      { key: 'academic_service', category: 'บริการวิชาการ', hours: summary.academic_service },
-      { key: 'academic', category: 'ภาระงานวิชาการ', hours: summary.academic },
-      { key: 'research', category: 'วิจัย/นวัตกรรม', hours: summary.research },
-      { key: 'personal', category: 'ส่วนตัว/การใช้ชีวิต', hours: summary.personal },
-    ];
+
+    return data;
   }, [reportData]);
 
   const summaryColumns = [
-    { title: 'พันธกิจ', dataIndex: 'category', key: 'category' },
-    { title: 'ชั่วโมงรวม', dataIndex: 'hours', key: 'hours', render: (h) => h.toFixed(2) },
-    { title: 'เฉลี่ย (ชม./สัปดาห์)', key: 'avg', render: (_, record) => (record.hours / 16).toFixed(2) },
+    {
+      title: 'พันธกิจ',
+      dataIndex: 'category',
+      key: 'category',
+      render: (text, record) => record.isTotal ? <Text strong>{text}</Text> : text
+    },
+    {
+      title: 'ชั่วโมงรวม',
+      dataIndex: 'hours',
+      key: 'hours',
+      render: (h, record) => record.isTotal ? <Text strong>{(h || 0).toFixed(2)}</Text> : (h || 0).toFixed(2)
+    },
+    {
+      title: 'เฉลี่ย (ชม./สัปดาห์)',
+      key: 'avg',
+      render: (_, record) => record.isTotal ? <Text strong>{((record.hours || 0) / 16).toFixed(2)}</Text> : ((record.hours || 0) / 16).toFixed(2)
+    },
   ];
 
   const detailColumns = [
     { title: 'กิจกรรม/ภาระงาน', dataIndex: 'work_name', key: 'work_name' },
-    { title: 'หมวดหมู่', dataIndex: 'category', key: 'category' },
-    { title: 'วันที่/ภาคการศึกษา', key: 'date_semester', render: (_, record) => record.work_date ? dayjs(record.work_date).format('DD/MM/YYYY') : `เทอม ${record.semester}/${record.academic_year}` },
-    { title: 'ชั่วโมง', dataIndex: 'hours_spent', key: 'hours_spent', align: 'right' },
+    { title: 'หมวดหมู่', dataIndex: 'category', key: 'category', responsive: ['sm'], render: (cat) => categoryTranslations[cat] || cat },
+    { title: 'วันที่', dataIndex: 'work_date', key: 'date', responsive: ['md'], render: (date) => date ? dayjs(date).format('DD MMM YYYY') : '-' },
+    { title: 'ชั่วโมง', dataIndex: 'hours_spent', key: 'hours_spent', align: 'right', render: (val) => val.toFixed(1) },
   ];
 
-  if (authLoading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spin size="large" /></div>;
+  // --- *** จุดที่แก้ไข: ฟังก์ชัน handleDownloadPDF *** ---
+  const handleDownloadPDF = () => {
+    if (!reportData || reportData.length === 0) {
+      message.warning("ไม่มีข้อมูลสำหรับสร้าง PDF");
+      return;
+    }
+
+    const doc = new jsPDF();
+    doc.setFont('THSarabunNew', 'normal');
+
+    // ส่วน Header ของเอกสาร (เหมือนเดิม)
+    doc.setFontSize(18);
+    doc.text("รายงานสรุปภาระงานนักศึกษา", 105, 22, { align: 'center' });
+    doc.setFontSize(11);
+    doc.text(`ชื่อ-สกุล: ${userProfile?.full_name || 'N/A'}`, 14, 32);
+    doc.text(`รหัสนักศึกษา: ${userProfile?.student_identifier || 'N/A'}`, 14, 38);
+    const semesterText = selectedSemester ? semesterOptions.find(s => s.value === selectedSemester)?.label : 'ทั้งหมด';
+    doc.text(`ปีการศึกษา: ${selectedYear} / ภาคการศึกษา: ${semesterText}`, 14, 44);
+
+    // สร้างตารางสรุป (เหมือนเดิม)
+    doc.setFontSize(14);
+    doc.text("สรุปภาระงานรายพันธกิจ", 14, 58);
+    autoTable(doc, {
+      startY: 62,
+      head: [['พันธกิจ', 'ชั่วโมงรวม', 'เฉลี่ย (ชม./สัปดาห์)']],
+      body: summaryData.map(item => [
+        item.category,
+        item.hours.toFixed(2),
+        (item.hours / 16).toFixed(2)
+      ]),
+      theme: 'grid',
+      headStyles: { font: 'THSarabunNew', fontStyle: 'normal', fillColor: [220, 220, 220], textColor: [0, 0, 0] },
+      bodyStyles: { font: 'THSarabunNew', fontStyle: 'normal' },
+      didParseCell: function (data) {
+        const raw = data.row.raw;
+        if (raw && raw.isTotal) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = '#f0f0f0';
+        }
+      }
+    });
+
+    // --- **ลบส่วนที่สร้างตารางรายละเอียดออกไปทั้งหมด** ---
+
+    // หาตำแหน่งท้ายตารางล่าสุด
+    let finalY = doc.lastAutoTable.finalY;
+
+    // เพิ่มส่วนท้ายสำหรับเซ็นชื่อ (ปรับตำแหน่งให้เหมาะสม)
+    doc.setFontSize(11);
+    // เพิ่มระยะห่างจากตารางให้มากขึ้น
+    const signatureY = finalY + 30;
+    doc.text("ลงชื่อ................................................................อาจารย์ที่ปรึกษา", 156, signatureY, { align: 'center' });
+    doc.text("(.................................................................)", 150, signatureY + 7, { align: 'center' });
+    doc.text("วันที่............/............/............", 150, signatureY + 14, { align: 'center' });
+
+    // บันทึกไฟล์
+    const fileName = `Workload_Summary_${userProfile?.student_identifier || 'student'}_${selectedYear}.pdf`;
+    doc.save(fileName);
+  };
+
+  if (authLoading) return <div className="flex justify-center items-center h-screen"><Spin size="large" /></div>;
   if (role !== 'student') return <DashboardLayout><div>Access Denied</div></DashboardLayout>;
 
   return (
     <DashboardLayout title="รายงานของฉัน">
-      <div style={{ padding: "24px" }}>
-        <Card>
-          <Title level={2}>รายงานของฉัน</Title>
-          <Row gutter={16} style={{ marginBottom: 24 }}>
+      <div className="bg-white min-h-screen p-4 sm:p-6 lg:p-8">
+        <div className="max-w-7xl mx-auto space-y-8">
+          <div className="flex flex-wrap justify-between items-center gap-4">
+            <div>
+              <Title level={2} className="!mb-1 flex items-center gap-3"><BarChartOutlined />รายงานของฉัน</Title>
+              <Text type="secondary">สรุปและรายละเอียดภาระงานของคุณในแต่ละภาคการศึกษา</Text>
+            </div>
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              size="large"
+              onClick={handleDownloadPDF}
+              disabled={!reportData || reportData.length === 0 || loading}
+            >
+              Download PDF
+            </Button>
+          </div>
+          <Row gutter={[16, 16]} justify="start">
             <Col>
-              <Select
-                placeholder="ปีการศึกษา"
-                options={yearOptions}
-                value={selectedYear}
-                onChange={setSelectedYear}
-                style={{ width: 200 }}
-                loading={yearOptions.length === 0}
-              />
+              <Select placeholder="ปีการศึกษา" options={yearOptions} value={selectedYear} onChange={setSelectedYear} style={{ width: 200 }} loading={yearOptions.length === 0} size="large" />
             </Col>
             <Col>
-              <Select
-                placeholder="ทุกภาคการศึกษา"
-                options={semesterOptions}
-                value={selectedSemester}
-                onChange={setSelectedSemester}
-                style={{ width: 200 }}
-                allowClear
-              />
+              <Select placeholder="ทุกภาคการศึกษา" options={semesterOptions} value={selectedSemester} onChange={setSelectedSemester} style={{ width: 200 }} allowClear size="large" />
             </Col>
           </Row>
 
-          <Title level={4}>สรุปภาระงานรายพันธกิจ</Title>
-          <Table columns={summaryColumns} dataSource={summaryData} pagination={false} loading={loading} rowKey="key" />
-
-          <Divider />
-
-          <Title level={4}>รายละเอียดภาระงานทั้งหมด</Title>
-          <Table columns={detailColumns} dataSource={reportData} pagination={{ pageSize: 10 }} loading={loading} rowKey="workload_id" />
-        </Card>
+          <div>
+            <Title level={3}>สรุปภาระงานรายพันธกิจ</Title>
+            <div className="shadow-md rounded-lg overflow-hidden border border-gray-200">
+              <Table columns={summaryColumns} dataSource={summaryData} pagination={false} loading={loading} rowKey="key" />
+            </div>
+          </div>
+          <div>
+            <Title level={3}>รายละเอียดภาระงานทั้งหมด</Title>
+            <div className="shadow-md rounded-lg overflow-hidden border border-gray-200">
+              <Table columns={detailColumns} dataSource={reportData} pagination={{ pageSize: 10, showSizeChanger: true }} loading={loading} rowKey="workload_id" scroll={{ x: 'max-content' }} locale={{ emptyText: <Empty description="ไม่พบข้อมูลภาระงานตามเงื่อนไขที่เลือก" /> }} />
+            </div>
+          </div>
+        </div>
       </div>
     </DashboardLayout>
   );

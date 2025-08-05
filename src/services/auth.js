@@ -1,6 +1,6 @@
 import { supabase } from "@/config/supabase";
 
-// ตรวจสอบ authentication และ role
+// ฟังก์ชันตรวจสอบการเข้าสู่ระบบ
 export async function checkAuth() {
   try {
     const {
@@ -8,47 +8,78 @@ export async function checkAuth() {
     } = await supabase.auth.getSession();
 
     if (!session) {
-      return null; // Not authenticated
+      return null; // ไม่ได้ล็อกอิน
     }
 
-    // Fetch user role from database
-    const { data: userData, error } = await supabase
-      .from("users")
-      .select("role, email, id")
-      .eq("id", session.user.id)
-      .single();
-
-    if (error || !userData) {
-      console.error("Error fetching user role:", error);
-      return null; // Error fetching role
+    // ตรวจสอบว่า token ยังใช้ได้หรือไม่
+    const { data: user, error: userError } = await supabase.auth.getUser();
+    if (userError || !user.user) {
+      console.log("Token invalid, clearing session");
+      await supabase.auth.signOut();
+      return null;
     }
 
     return {
       user: session.user,
-      role: userData.role,
-      email: userData.email,
-      userId: userData.id,
+      role: user.role,
+      email: user.email,
+      userId: user.id,
     };
   } catch (error) {
     console.error("Auth check error:", error);
-    return null; // Error during auth check
+    return null; // หากมีข้อผิดพลาดในการตรวจสอบ
   }
 }
 
-// ล็อกเอาท์
+// ฟังก์ชันออกจากระบบ
 export async function logout() {
   try {
-    // onAuthStateChange ใน AuthContext จะตรวจจับ event 'SIGNED_OUT'
-    // และเคลียร์ state ให้เองโดยอัตโนมัติ
+    console.log("Starting logout process...");
+
+    // 1. ล็อกเอาท์จาก Supabase
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+
+    // 2. เคลียร์ข้อมูลใน localStorage และ sessionStorage
+    if (typeof window !== 'undefined') {
+      localStorage.clear(); // เคลียร์ทั้งหมดใน localStorage
+      sessionStorage.clear(); // เคลียร์ทั้งหมดใน sessionStorage
+    }
+
+    // 3. รีเฟรชหน้า
+    window.location.href = '/'; // เปลี่ยนหน้าไปที่หน้าแรก
+
+    console.log("Logout completed successfully");
     return { success: true };
   } catch (error) {
     console.error("Logout error:", error);
     return { success: false, error: error.message };
   }
 }
-// เข้าสู่ระบบ
+
+// ฟังก์ชันตรวจสอบ session
+export async function validateSession() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return false;
+
+    // ตรวจสอบ token validity
+    const { data: user, error } = await supabase.auth.getUser();
+    if (error || !user.user) {
+      console.log("Session invalid, signing out");
+      await supabase.auth.signOut();
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Session validation error:", error);
+    await supabase.auth.signOut();
+    return false;
+  }
+}
+
+// ฟังก์ชันเข้าสู่ระบบ
 export async function signIn(email, password) {
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -58,16 +89,14 @@ export async function signIn(email, password) {
 
     if (error) throw error;
 
-    // ไม่ต้องดึง role ที่นี่แล้ว
     return { success: true, user: data.user };
-
   } catch (error) {
     console.error("Sign in error:", error);
     return { success: false, error: error.message };
   }
 }
 
-// ฟังก์ชัน Helper สำหรับตรวจสอบสิทธิ์ (สามารถเรียกใช้ได้ทุกที่)
+// ฟังก์ชันตรวจสอบสิทธิ์
 export function hasPermission(userRole, requiredRoles) {
   if (!userRole || !requiredRoles) return false;
 
@@ -89,6 +118,7 @@ export function getDefaultRouteByRole(role) {
 
   return routes[role] || "/";
 }
+
 // ตรวจสอบ session และ redirect ถ้าจำเป็น
 export async function requireAuth(requiredRoles = null) {
   const authData = await checkAuth();
@@ -113,18 +143,4 @@ export async function requireAuth(requiredRoles = null) {
     authorized: true,
     user: authData,
   };
-}
-
-// ตั้งค่าการฟัง auth state changes
-export function onAuthStateChange(callback) {
-  return supabase.auth.onAuthStateChange(async (event, session) => {
-    if (event === "SIGNED_IN" && session) {
-      const authData = await checkAuth();
-      callback({ event, session, authData });
-    } else if (event === "SIGNED_OUT") {
-      localStorage.removeItem("userRole");
-      localStorage.removeItem("rememberLogin");
-      callback({ event, session: null, authData: null });
-    }
-  });
 }

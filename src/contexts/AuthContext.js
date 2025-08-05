@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useRef } from "react";
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/config/supabase";
+import { validateSession } from "@/services/auth";
 
 const AuthContext = createContext({
   session: null,
@@ -9,7 +10,9 @@ const AuthContext = createContext({
   loading: true,
   user: null,
   role: null,
-  studentId: null, // เพิ่ม key นี้เพื่อให้ Component อื่นรู้ว่ามีค่านี้อยู่
+  studentId: null,
+  refreshUserProfile: null,
+  clearAuthData: null,
 });
 
 export const AuthProvider = ({ children }) => {
@@ -17,83 +20,113 @@ export const AuthProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const initialLoadComplete = useRef(false);
+  const userProfileCache = useRef(new Map());
 
+  // ฟังก์ชันเคลียร์ข้อมูล auth ทั้งหมด
+  const clearAuthData = useCallback(() => {
+    setSession(null);
+    setUserProfile(null);
+    userProfileCache.current.clear();
+
+    // เคลียร์ localStorage และ sessionStorage
+    if (typeof window !== 'undefined') {
+      localStorage.clear();
+      sessionStorage.clear();
+    }
+  }, []);
+
+  // ตรวจสอบ session validity
   useEffect(() => {
-    // ฟังก์ชันดึงโปรไฟล์ที่สมบูรณ์
-    const getUserProfile = async (user) => {
-      if (!user) return null;
-      try {
-        const { data: baseProfile, error: userError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-
-        if (userError) {
-          console.error("AuthContext: Error fetching user profile:", userError.message);
-          throw userError;
-        }
-
-        if (!baseProfile) return null;
-
-        if (baseProfile.role === 'student') {
-          const { data: studentData, error: studentError } = await supabase
-            .from('students')
-            .select('id, student_id')
-            .eq('user_id', user.id)
-            .single();
-
-          if (studentError) {
-            console.warn("AuthContext: Could not find student details for user:", user.id, studentError.message);
-            return baseProfile;
-          }
-
-          return {
-            ...baseProfile,
-            student_profile_id: studentData?.id,
-            student_identifier: studentData?.student_id
-          };
-        }
-
-        return baseProfile;
-
-      } catch (e) {
-        console.error("AuthContext: Exception in getUserProfile. Signing out...", e);
-        await supabase.auth.signOut();
-        return null;
+    const handleFocus = async () => {
+      const isValid = await validateSession();
+      if (!isValid && session) {
+        console.log("Session invalid, clearing auth data");
+        clearAuthData();
       }
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, currentSession) => {
-        const hasUserChanged = currentSession?.user?.id !== session?.user?.id;
-        if (!hasUserChanged && initialLoadComplete.current) {
-          return;
-        }
+    if (typeof window !== 'undefined') {
+      window.addEventListener("focus", handleFocus);
+      return () => window.removeEventListener("focus", handleFocus);
+    }
+  }, [session, clearAuthData]);
 
-        setLoading(true);
+  // ฟังก์ชันดึงข้อมูลโปรไฟล์ผู้ใช้จาก Cache
+  const getUserProfile = useCallback(async (user) => {
+    if (!user) return null;
 
-        if (currentSession?.user) {
-          const profile = await getUserProfile(currentSession.user);
-          setSession(currentSession);
-          setUserProfile(profile);
+    const cacheKey = user.id;
+    if (userProfileCache.current.has(cacheKey)) {
+      return userProfileCache.current.get(cacheKey);
+    }
+
+    try {
+      const { data: baseProfile, error: userError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+      if (userError) throw userError;
+
+      if (!baseProfile) return null;
+
+      let enrichedProfile = baseProfile;
+
+      if (baseProfile.role === "student") {
+        const { data: studentData, error: studentError } = await supabase
+          .from("students")
+          .select("id, student_id")
+          .eq("user_id", user.id)
+          .single();
+
+        if (studentError) {
+          console.warn("Could not find student details:", studentError.message);
         } else {
-          setSession(null);
-          setUserProfile(null);
+          enrichedProfile = {
+            ...baseProfile,
+            student_profile_id: studentData?.id,
+            student_identifier: studentData?.student_id,
+          };
         }
-
-        if (!initialLoadComplete.current) {
-          initialLoadComplete.current = true;
-        }
-
-        setLoading(false);
       }
-    );
+
+      userProfileCache.current.set(cacheKey, enrichedProfile);
+      return enrichedProfile;
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+      clearAuthData();
+      await supabase.auth.signOut();
+      return null;
+    }
+  }, [clearAuthData]);
+
+  // การจัดการการเปลี่ยนแปลงของ Auth State
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+      setLoading(true);
+
+      if (event === 'SIGNED_OUT') {
+        clearAuthData();
+        setLoading(false);
+        return;
+      }
+
+      if (currentSession?.user) {
+        const profile = await getUserProfile(currentSession.user);
+        setSession(currentSession);
+        setUserProfile(profile);
+      } else {
+        clearAuthData();
+      }
+
+      setLoading(false);
+    });
 
     return () => {
       subscription?.unsubscribe();
     };
-  }, [session]);
+  }, [getUserProfile, clearAuthData]);
 
   const value = {
     session,
@@ -101,9 +134,9 @@ export const AuthProvider = ({ children }) => {
     loading,
     user: session?.user,
     role: userProfile?.role,
-    // --- จุดที่แก้ไข ---
-    // เพิ่มบรรทัดนี้เพื่อส่ง student's Primary Key (uuid) ออกไป
     studentId: userProfile?.student_profile_id || null,
+    refreshUserProfile: clearAuthData,
+    clearAuthData,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -112,7 +145,7 @@ export const AuthProvider = ({ children }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };

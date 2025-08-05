@@ -1,25 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import dynamic from 'next/dynamic';
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import { getMyWorkloadReport } from "@/services/workloads";
-import { Spin, Card, Row, Col, Typography, message, Empty } from 'antd';
-// --- 1. นำเข้าไอคอนจาก Ant Design ---
+import { getDistinctAcademicYears } from "@/services/subjects";
+import { Spin, Card, Row, Col, Typography, message, Empty, Select, Space } from 'antd';
 import {
-  BookOutlined,
-  ExperimentOutlined,
-  TeamOutlined,
-  UserOutlined,
-  HeartOutlined
+  BookOutlined, ExperimentOutlined, TeamOutlined, UserOutlined, HeartOutlined
 } from "@ant-design/icons";
+import dynamic from 'next/dynamic';
 
-// --- Dynamic Import สำหรับ ApexCharts ---
 const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
 const { Title, Text } = Typography;
 
-// --- 2. อัปเดต Config ให้ใช้ไอคอนที่นำเข้ามา ---
 const categoryConfig = {
   academic: { name: "วิชาการ", icon: <BookOutlined />, color: "#3b82f6" },
   research: { name: "วิจัย", icon: <ExperimentOutlined />, color: "#8b5cf6" },
@@ -28,21 +22,13 @@ const categoryConfig = {
   personal: { name: "ส่วนตัว", icon: <HeartOutlined />, color: "#ef4444" }
 };
 
-// --- Component ย่อยที่สร้างขึ้นมาใหม่ (ปรับปรุงการแสดงผลไอคอน) ---
-
 const CategoryStatCard = ({ icon, title, value, color }) => (
-  <Card
-    bordered={false}
-    style={{ boxShadow: '0 2px 8px rgba(0, 0, 0, 0.09)', borderLeft: `5px solid ${color}` }}
-  >
-    <div style={{ display: 'flex', alignItems: 'center' }}>
-      {/* 3. ปรับสไตล์ให้ไอคอนมีสีตามธีม */}
-      <div style={{ fontSize: '28px', marginRight: '16px', color: color }}>
-        {icon}
-      </div>
+  <Card bordered={false} className="shadow-sm h-full">
+    <div className="flex items-center">
+      <div className="text-2xl p-3 rounded-lg mr-4" style={{ backgroundColor: `${color}1A`, color: color }}>{icon}</div>
       <div>
         <Text type="secondary">{title}</Text>
-        <Title level={4} style={{ margin: '0', color: color }}>{value}</Title>
+        <Title level={4} style={{ margin: '0' }}>{value}</Title>
       </div>
     </div>
   </Card>
@@ -79,27 +65,60 @@ const BarChartComponent = ({ data }) => {
   return <Chart options={options} series={series} type="bar" height={350} />;
 };
 
-// --- หน้าหลัก Dashboard ---
 export default function StudentDashboardPage() {
-  const { userProfile, role, loading: authLoading } = useAuth();
-  const [summary, setSummary] = useState(null);
+  const { role, loading: authLoading, studentId } = useAuth();
+  const [workloadData, setWorkloadData] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // --- States ใหม่สำหรับ Filters ---
+  const [yearOptions, setYearOptions] = useState([]);
+  const [selectedYear, setSelectedYear] = useState(null);
+  const [selectedSemester, setSelectedSemester] = useState(null); // null = รวมทั้งหมด
+
+  const semesterOptions = [
+    { value: 1, label: 'ภาคการศึกษาที่ 1' },
+    { value: 2, label: 'ภาคการศึกษาที่ 2' },
+    { value: 3, label: 'ภาคฤดูร้อน' },
+  ];
+
+  // --- useEffect สำหรับดึงข้อมูล Dropdowns และข้อมูล Dashboard ---
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      // ดึงรายการปีที่มีอยู่ทั้งหมดมาสร้างเป็นตัวเลือก
+      const yearRes = await getDistinctAcademicYears();
+      if (yearRes.success && yearRes.data.length > 0) {
+        const options = yearRes.data.map(year => ({ value: year, label: `ปีการศึกษา ${year}` }));
+        setYearOptions(options);
+        // ตั้งค่าปีเริ่มต้นเป็นปีล่าสุดที่มีข้อมูล
+        setSelectedYear(options[0].value);
+      } else {
+        const currentYear = String(new Date().getFullYear() + 543);
+        setYearOptions([{ value: currentYear, label: `ปีการศึกษา ${currentYear}` }]);
+        setSelectedYear(currentYear);
+      }
+    };
+
+    if (!authLoading && role === 'student') {
+      fetchInitialData();
+    }
+  }, [authLoading, role]);
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!userProfile) return;
-
+      // จะดึงข้อมูลก็ต่อเมื่อมี studentId และ selectedYear แล้ว
+      if (!studentId || !selectedYear) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
-      const res = await getMyWorkloadReport({ student_id: userProfile.student_profile_id });
+      const res = await getMyWorkloadReport({
+        student_id: studentId,
+        academic_year: selectedYear,
+        semester: selectedSemester,
+      });
 
       if (res.success) {
-        const tempSummary = { academic: 0, research: 0, academic_service: 0, student_affairs: 0, personal: 0 };
-        res.data.forEach(item => {
-          if (item.category in tempSummary) {
-            tempSummary[item.category] += parseFloat(item.hours_spent) || 0;
-          }
-        });
-        setSummary(tempSummary);
+        setWorkloadData(res.data);
       } else {
         message.error(`ไม่สามารถดึงข้อมูลได้: ${res.error}`);
       }
@@ -108,28 +127,35 @@ export default function StudentDashboardPage() {
 
     if (!authLoading && role === 'student') {
       fetchData();
-    } else if (!authLoading) {
-      setLoading(false);
     }
-  }, [authLoading, userProfile, role]);
+  }, [authLoading, role, studentId, selectedYear, selectedSemester]); // Re-fetch when filters change
 
-  const totalHours = summary ? Object.values(summary).reduce((sum, hours) => sum + hours, 0) : 0;
-  const pieData = summary ? Object.entries(summary)
+
+  // --- Logic การคำนวณและเตรียมข้อมูลสำหรับกราฟ (ใช้ useMemo) ---
+  const summary = useMemo(() => {
+    const tempSummary = { academic: 0, research: 0, academic_service: 0, student_affairs: 0, personal: 0 };
+    if (workloadData) {
+      workloadData.forEach(item => {
+        if (item.category in tempSummary) {
+          tempSummary[item.category] += parseFloat(item.hours_spent) || 0;
+        }
+      });
+    }
+    return tempSummary;
+  }, [workloadData]);
+
+  const totalHours = useMemo(() => Object.values(summary).reduce((sum, hours) => sum + hours, 0), [summary]);
+  const pieData = useMemo(() => Object.entries(summary)
     .map(([key, value]) => ({
       name: categoryConfig[key]?.name,
       value: value,
       color: categoryConfig[key]?.color
     }))
-    .filter(item => item.value > 0) : [];
+    .filter(item => item.value > 0), [summary]);
 
-  if (authLoading || loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <Spin size="large" />
-      </div>
-    );
+  if (authLoading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spin size="large" /></div>;
   }
-
   if (role !== "student") {
     return <DashboardLayout><div>Access Denied</div></DashboardLayout>;
   }
@@ -137,52 +163,66 @@ export default function StudentDashboardPage() {
   return (
     <DashboardLayout title="Dashboard นักศึกษา">
       <div style={{ padding: '24px', background: '#f0f2f5', minHeight: 'calc(100vh - 64px)' }}>
-        <Title level={2} style={{ marginBottom: '24px' }}>สรุปภาระงานของคุณ</Title>
+        <Row justify="space-between" align="middle" style={{ marginBottom: '24px' }}>
+          <Col>
+            <Title level={2}>สรุปภาระงานของคุณ</Title>
+          </Col>
+          <Col>
+            <Space>
+              <Select
+                value={selectedYear}
+                onChange={setSelectedYear}
+                options={yearOptions}
+                style={{ width: 200 }}
+                loading={!selectedYear}
+              />
+              <Select
+                placeholder="ทุกภาคการศึกษา"
+                value={selectedSemester}
+                onChange={setSelectedSemester}
+                options={semesterOptions}
+                style={{ width: 200 }}
+                allowClear
+              />
+            </Space>
+          </Col>
+        </Row>
 
-        <Row gutter={[24, 24]} style={{ marginBottom: '24px' }}>
-          {summary && Object.entries(summary).map(([key, value]) => {
-            const config = categoryConfig[key];
-            return (
-              <Col xs={24} sm={12} lg={8} xl={4} key={key}>
-                <CategoryStatCard
-                  icon={config.icon}
-                  title={config.name}
-                  value={`${value.toFixed(1)} ชม.`}
-                  color={config.color}
-                />
+        {loading ? <div className="text-center py-10"><Spin /></div> : (
+          <>
+            <Row gutter={[24, 24]} style={{ marginBottom: '24px' }}>
+              {Object.entries(summary).map(([key, value]) => {
+                const config = categoryConfig[key];
+                return (
+                  <Col xs={24} sm={12} lg={8} xl={4} key={key}>
+                    <CategoryStatCard icon={config.icon} title={config.name} value={`${value.toFixed(1)} ชม.`} color={config.color} />
+                  </Col>
+                );
+              })}
+              <Col xs={24} sm={12} lg={8} xl={4}>
+                <Card bordered={false} style={{ boxShadow: '0 2px 8px rgba(0, 0, 0, 0.09)', background: '#1890ff', color: 'white', height: '100%' }}>
+                  <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
+                    <Text style={{ color: 'white', opacity: 0.8 }}>ชั่วโมงรวม</Text>
+                    <Title level={2} style={{ margin: '0', color: 'white' }}>{totalHours.toFixed(1)}</Title>
+                  </div>
+                </Card>
               </Col>
-            );
-          })}
-          <Col xs={24} sm={12} lg={8} xl={4}>
-            <Card bordered={false} style={{ boxShadow: '0 2px 8px rgba(0, 0, 0, 0.09)', background: '#1890ff', color: 'white', height: '100%' }}>
-              <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
-                <Text style={{ color: 'white', opacity: 0.8 }}>ชั่วโมงรวมทั้งหมด</Text>
-                <Title level={2} style={{ margin: '0', color: 'white' }}>{totalHours.toFixed(1)}</Title>
-              </div>
-            </Card>
-          </Col>
-        </Row>
+            </Row>
 
-        <Row gutter={[24, 24]}>
-          <Col xs={24} lg={12}>
-            <Card title="สัดส่วนภาระงาน" bordered={false}>
-              {pieData.length > 0 ? (
-                <PieChartComponent data={pieData} />
-              ) : (
-                <Empty description="ไม่มีข้อมูลสำหรับแสดงผล" style={{ padding: '80px 0' }} />
-              )}
-            </Card>
-          </Col>
-          <Col xs={24} lg={12}>
-            <Card title="ภาระงานแต่ละด้าน" bordered={false}>
-              {totalHours > 0 ? (
-                <BarChartComponent data={summary} />
-              ) : (
-                <Empty description="ไม่มีข้อมูลสำหรับแสดงผล" style={{ padding: '80px 0' }} />
-              )}
-            </Card>
-          </Col>
-        </Row>
+            <Row gutter={[24, 24]}>
+              <Col xs={24} lg={12}>
+                <Card title="สัดส่วนภาระงาน" bordered={false}>
+                  {pieData.length > 0 ? <PieChartComponent data={pieData} /> : <Empty description="ไม่มีข้อมูลสำหรับแสดงผล" style={{ padding: '80px 0' }} />}
+                </Card>
+              </Col>
+              <Col xs={24} lg={12}>
+                <Card title="ภาระงานแต่ละด้าน" bordered={false}>
+                  {totalHours > 0 ? <BarChartComponent data={summary} /> : <Empty description="ไม่มีข้อมูลสำหรับแสดงผล" style={{ padding: '80px 0' }} />}
+                </Card>
+              </Col>
+            </Row>
+          </>
+        )}
       </div>
     </DashboardLayout>
   );
